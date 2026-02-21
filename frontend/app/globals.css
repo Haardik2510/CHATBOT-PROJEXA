@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background: radial-gradient(
+    circle at 20% 20%,
+    #111827,
+    #0f172a 40%,
+    #020617 100%
+  );
+}
+
+.glass {
+  background: rgba(30, 41, 59, 0.4);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeInUp 0.25s ease-out;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  background: white;
+  border-radius: 50%;
+  opacity: 0.4;
+  animation: typing 1.4s infinite;
+}
+
+.dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0% { opacity: 0.3; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-3px); }
+  100% { opacity: 0.3; transform: translateY(0); }
+}
+
+/* Markdown styling */
+.markdown p {
+  margin-bottom: 8px;
+}
+
+.markdown ul {
+  list-style: disc;
+  padding-left: 20px;
+}
+
+.markdown h1, .markdown h2, .markdown h3 {
+  font-weight: 600;
+  margin-bottom: 6px;
+}

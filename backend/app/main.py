@@ -3,11 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.schemas import ChatRequest, ChatResponse
 from app.rag import retrieve_context
-from app.llm import cached_generate_answer
+from app.llm import generate_answer, quick_reply
 
-app = FastAPI(title="KRMU AI Assistant Backend")
+app = FastAPI(title="KRMU AI Assistant")
 
-# ---------- CORS ----------
+# ✅ CORS (keep this always)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -19,21 +19,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------- Health ----------
+# ✅ Health route (prevents 404 on root)
 @app.get("/")
 def health():
     return {"status": "Backend running"}
 
-# ---------- Chat ----------
+SMALL_TALK = {
+    "hi", "hello", "hey", "thanks", "thank you",
+    "how are you", "ok", "okay"
+}
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
-    print(f"[CHAT] Question: {req.message}")
+    user_msg = req.message.strip().lower()
 
+    # ⚡ FAST PATH (NO RAG)
+    if user_msg in SMALL_TALK or len(user_msg) < 6:
+        return {"answer": quick_reply(req.message)}
+
+    # 🧠 RAG PATH
     context = retrieve_context(req.message)
+    answer = generate_answer(req.message, context)
 
-    if not context:
-        print("[CHAT] No relevant context found")
-
-    answer = cached_generate_answer(req.message, context)
-
-    return {"answer": answer}
+    return {
+        "answer": answer or
+        "I do not have this information in my knowledge base."
+    }
