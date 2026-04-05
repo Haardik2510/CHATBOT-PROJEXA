@@ -21,10 +21,14 @@ services:
         sync: false
       - key: OLLAMA_BASE_URL
         sync: false
-      - key: OLLAMA_CHAT_MODEL
-        value: llama3.2:3b
       - key: OLLAMA_EMBEDDING_MODEL
         value: nomic-embed-text
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: llama-3.1-70b-versatile
       - key: LLM_REQUEST_TIMEOUT
         value: "60"
       - key: LLM_MAX_TOKENS
