@@ -1,0 +1,44 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: setai-backend
+    env_file:
+      - ./backend/.env
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-http://localhost:8001}
+        REACT_APP_SUPABASE_URL: ${REACT_APP_SUPABASE_URL:-}
+        REACT_APP_SUPABASE_ANON_KEY: ${REACT_APP_SUPABASE_ANON_KEY:-}
+        REACT_APP_SUPABASE_PROJECT_REF: ${REACT_APP_SUPABASE_PROJECT_REF:-}
+    container_name: setai-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+
+  ollama:
+    profiles:
+      - local-ollama
+    image: ollama/ollama:latest
+    container_name: setai-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama_data:

@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: setai
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: documents
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: OLLAMA_BASE_URL
+        sync: false
+      - key: OLLAMA_CHAT_MODEL
+        value: llama3.2:3b
+      - key: OLLAMA_EMBEDDING_MODEL
+        value: nomic-embed-text
+      - key: LLM_REQUEST_TIMEOUT
+        value: "60"
+      - key: LLM_MAX_TOKENS
+        value: "384"
+      - key: ENABLE_WEB_FALLBACK
+        value: "false"

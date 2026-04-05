@@ -1,0 +1,82 @@
+{
+  "theme": "dark",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "emotional_tone": "Authoritative, Reliable, Modern, Objective",
+  "typography": {
+    "heading_font": "Outfit",
+    "body_font": "Manrope",
+    "mono_font": "JetBrains Mono",
+    "scales": {
+      "h1": "text-4xl sm:text-5xl tracking-tight font-bold",
+      "h2": "text-2xl sm:text-3xl tracking-tight font-semibold",
+      "h3": "text-xl sm:text-2xl tracking-tight font-medium",
+      "h4": "text-lg font-medium",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm text-zinc-400",
+      "tiny": "text-xs tracking-[0.2em] uppercase font-bold text-zinc-500"
+    }
+  },
+  "colors": {
+    "background": "#09090b",
+    "surface": "#18181b",
+    "surface_hover": "#27272a",
+    "border": "#27272a",
+    "primary": "#3b82f6",
+    "primary_hover": "#2563eb",
+    "primary_foreground": "#ffffff",
+    "text_primary": "#fafafa",
+    "text_secondary": "#a1a1aa",
+    "text_tertiary": "#71717a",
+    "danger": "#ef4444",
+    "success": "#22c55e",
+    "warning": "#eab308"
+  },
+  "spacing_and_layout": {
+    "philosophy": "High density, functional control room grid. Generous internal padding for reading areas, tight gaps for data.",
+    "dashboard_grid": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 or gap-6",
+    "container_padding": "p-6 md:p-8",
+    "border_radius": "rounded-md",
+    "surfaces": "Cardless or 1px solid border (#27272a) with no shadow. Flat solid surfaces.",
+    "alignment": "Left-align paragraphs, dense content, and data. Optical alignment for icons."
+  },
+  "components": {
+    "strategy": "Shadcn UI heavily customized to remove Vercel defaults. Strip shadows, use 1px borders, square or slightly rounded edges.",
+    "navigation": "Sticky sidebar navigation for desktop, bottom bar or hamburger for mobile. Solid background (#09090b) with 1px right border.",
+    "chat_interface": "Messages are distinct blocks. User: primary background (#3b82f6) with white text. AI: surface background (#18181b) with 1px border. Voice interface uses pulsing rings (framer-motion).",
+    "citations": "Tiny, clickable monospace pills (#27272a background, text-xs) appended to AI responses.",
+    "document_upload": "Dashed border area (#27272a) with hover state changing border to primary (#3b82f6) and subtle background tint.",
+    "data_tables": "Shadcn tables. No zebra striping, just 1px bottom borders for rows. Monospace fonts for numbers/dates.",
+    "analytics_charts": "Shadcn charts (Recharts). Use primary (#3b82f6) and muted zinc (#27272a) for data lines/bars. No grid lines except subtle y-axis."
+  },
+  "motion_and_interactions": {
+    "hover_states": "All interactive elements MUST explicitly change text color and background on hover. Example: hover:bg-zinc-800 hover:text-white",
+    "transitions": "transition-colors duration-200 ease-in-out",
+    "animations": "Micro-interactions for feedback. Pulsing effect for voice recording state. Staggered fade-up for list items/chat messages."
+  },
+  "accessibility": {
+    "contrast": "Ensure 4.5:1 ratio for text. Focus states must have high contrast (focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-zinc-950).",
+    "motion": "Respect prefers-reduced-motion.",
+    "testing": "All interactive elements MUST include data-testid attributes (e.g., data-testid='voice-record-btn')."
+  },
+  "media": {
+    "icons": "lucide-react for standard UI, @phosphor-icons/react for rich dashboard icons.",
+    "image_urls": [
+      {
+        "url": "https://images.unsplash.com/photo-1736773999645-2d85a5e8562a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHwxfHxkYXJrJTIwb2JzaWRpYW4lMjBnZW9tZXRyaWMlMjBhcmNoaXRlY3R1cmV8ZW58MHx8fHwxNzc1MjQ3NTY0fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Dark obsidian geometric architecture, excellent for a subtle, professional login background overlay or hero banner.",
+        "category": "background"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Install required font dependencies: google fonts for Outfit, Manrope, JetBrains Mono.",
+    "Install @phosphor-icons/react and framer-motion.",
+    "Configure tailwind.config.js with the specified colors (zinc scale for neutrals, blue scale for primary) and border radius (md).",
+    "Build the dashboard layout with a persistent sidebar.",
+    "Implement the Chat View (default route): text input, voice record button with pulsing animation, message history with citation pills.",
+    "Implement Admin View: Document upload zone (drag & drop), indexing status table, role management, and simple analytics charts using recharts.",
+    "Ensure the entire app is wrapped in the dark mode class (e.g., `<html className='dark'>`).",
+    "All cards/containers should use `bg-zinc-900 border border-zinc-800` rather than shadows.",
+    "DO NOT use Inter font anywhere. Stick strictly to the typography scales defined."
+  ]
+}

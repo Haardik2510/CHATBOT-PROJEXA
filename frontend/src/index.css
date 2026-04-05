@@ -1,0 +1,220 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* K.R. Mangalam University Theme */
+    --background: 220 15% 8%;
+    --foreground: 0 0% 98%;
+    --card: 220 15% 10%;
+    --card-foreground: 0 0% 98%;
+    --popover: 220 15% 10%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 44 100% 50%;
+    --primary-foreground: 220 15% 8%;
+    --secondary: 220 10% 15%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 220 10% 15%;
+    --muted-foreground: 220 5% 64%;
+    --accent: 220 10% 15%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 10% 18%;
+    --input: 220 10% 18%;
+    --ring: 44 100% 50%;
+    --chart-1: 44 100% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --radius: 0.5rem;
+    --sidebar-background: 220 15% 6%;
+    --sidebar-foreground: 220 5% 90%;
+    --sidebar-primary: 44 100% 50%;
+    --sidebar-primary-foreground: 220 15% 8%;
+    --sidebar-accent: 220 10% 15%;
+    --sidebar-accent-foreground: 220 5% 90%;
+    --sidebar-border: 220 10% 18%;
+    --sidebar-ring: 44 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-[#12151a] text-[#fafafa] font-body antialiased;
+    margin: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+  }
+
+  code, pre {
+    @apply font-mono;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-[#FFBA00] hover:bg-[#e5a800] text-[#12151a] font-semibold px-4 py-2 rounded-md transition-all duration-200;
+  }
+
+  .btn-secondary {
+    @apply bg-[#1e2330] hover:bg-[#2a3142] text-white px-4 py-2 rounded-md transition-all duration-200 border border-[#2a3142];
+  }
+
+  .card-surface {
+    @apply bg-[#1a1e26] border border-[#2a3142] rounded-lg;
+  }
+
+  .input-field {
+    @apply bg-[#1a1e26] border border-[#2a3142] rounded-md px-3 py-2 text-[#fafafa] placeholder:text-[#6b7280] focus:outline-none focus:ring-2 focus:ring-[#FFBA00] focus:ring-offset-2 focus:ring-offset-[#12151a] transition-all duration-200;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#9ca3af] hover:bg-[#1e2330] hover:text-white transition-all duration-200;
+  }
+
+  .sidebar-link.active {
+    @apply bg-[#FFBA00]/10 text-[#FFBA00] border-l-2 border-[#FFBA00];
+  }
+
+  .citation-pill {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 bg-[#FFBA00]/10 border border-[#FFBA00]/30 rounded text-xs font-mono text-[#FFBA00] hover:bg-[#FFBA00]/20 cursor-pointer transition-all duration-200;
+  }
+
+  .message-user {
+    @apply bg-[#FFBA00] text-[#12151a] px-4 py-3 rounded-2xl rounded-br-md max-w-[80%] ml-auto font-medium;
+  }
+
+  .message-assistant {
+    @apply bg-[#1a1e26] border border-[#2a3142] text-[#fafafa] px-4 py-3 rounded-2xl rounded-bl-md max-w-[80%];
+  }
+
+  .upload-zone {
+    @apply border-2 border-dashed border-[#2a3142] rounded-lg p-8 text-center transition-all duration-300 hover:border-[#FFBA00] hover:bg-[#FFBA00]/5 cursor-pointer;
+  }
+
+  .upload-zone.dragover {
+    @apply border-[#FFBA00] bg-[#FFBA00]/10;
+  }
+
+  .stat-card {
+    @apply bg-[#1a1e26] border border-[#2a3142] rounded-lg p-5 transition-all duration-300 hover:border-[#FFBA00]/30;
+  }
+
+  .voice-btn {
+    @apply relative w-12 h-12 rounded-full bg-[#FFBA00] flex items-center justify-center transition-all duration-200 hover:bg-[#e5a800] hover:scale-105;
+  }
+
+  .voice-btn.recording {
+    @apply bg-red-500 hover:bg-red-600;
+  }
+
+  .voice-btn.recording::before {
+    content: '';
+    @apply absolute inset-0 rounded-full border-2 border-red-500 animate-ping;
+  }
+
+  .glass-card {
+    @apply bg-[#1a1e26]/80 backdrop-blur-xl border border-[#2a3142]/50 rounded-xl;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-[#FFBA00] to-[#ffd700] bg-clip-text text-transparent;
+  }
+
+  .glow-effect {
+    box-shadow: 0 0 30px rgba(255, 186, 0, 0.15);
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #2a3142 transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #2a3142;
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: #3f4556;
+  }
+}
+
+/* Animation keyframes */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.5s ease-out forwards;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.5s ease-out forwards;
+}
+
+/* Data debug wrapper styles */
+@layer base {
+  [data-debug-wrapper="true"] {
+    display: contents !important;
+  }
+
+  [data-debug-wrapper="true"] > * {
+    margin-left: inherit;
+    margin-right: inherit;
+    margin-top: inherit;
+    margin-bottom: inherit;
+    padding-left: inherit;
+    padding-right: inherit;
+    padding-top: inherit;
+    padding-bottom: inherit;
+    column-gap: inherit;
+    row-gap: inherit;
+    gap: inherit;
+  }
+}

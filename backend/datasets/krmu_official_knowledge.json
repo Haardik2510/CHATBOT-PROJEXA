@@ -1,0 +1,159 @@
+{
+  "dataset_name": "krmu_official_knowledge",
+  "verified_on": "2026-04-05",
+  "description": "Curated K.R. Mangalam University knowledge base built from official public webpages and paraphrased for internal search and answer retrieval.",
+  "documents": [
+    {
+      "id": "krmu_about_2026",
+      "title": "K.R. Mangalam University Basic Overview",
+      "category": "overview",
+      "source_url": "https://www.krmangalam.edu.in/about-us/",
+      "verified_on": "2026-04-05",
+      "content": "# K.R. Mangalam University Basic Overview\n\nK.R. Mangalam University, also called KRMU, is located on Sohna Road in Gurugram, Haryana 122103. The university presents itself as a multidisciplinary private university established in 2013. The official site highlights academic breadth, industry exposure, research orientation, campus life, and admissions support as core parts of the KRMU experience.\n\nOn the official about page, KRMU highlights 11 schools and more than 700 faculty members. Across its public pages, the university also promotes more than 100 programmes, strong placement support, and a learning environment built around practical education, innovation, and career readiness.\n\nFor general identity, location, and institutional background, the about page should be treated as the primary public source."
+    },
+    {
+      "id": "krmu_schools_2026",
+      "title": "KRMU Schools and Academic Units",
+      "category": "academics",
+      "source_url": "https://www.krmangalam.edu.in/about-us/",
+      "verified_on": "2026-04-05",
+      "content": "# KRMU Schools and Academic Units\n\nThe official KRMU website lists major academic units including the School of Engineering and Technology, School of Management and Commerce, School of Legal Studies, School of Medical and Allied Sciences, School of Physiotherapy and Rehabilitation Sciences, School of Liberal Arts, School of Architecture and Design, School of Basic and Applied Sciences, School of Emerging Media and Creator Economy, School of Hotel Management and Catering Technology, School of Education, School of Agricultural Sciences, and Zenith School of AI.\n\nThe named schools and units on the official site are the safest reference for school-level questions, because the site navigation and about content are updated more frequently than static brochures."
+    },
+    {
+      "id": "krmu_accreditations_2026",
+      "title": "KRMU Accreditations Recognition and Approvals",
+      "category": "accreditation",
+      "source_url": "https://www.krmangalam.edu.in/accreditations-recognition-and-approvals",
+      "verified_on": "2026-04-05",
+      "content": "# KRMU Accreditations Recognition and Approvals\n\nThe official accreditations page states that K.R. Mangalam University is a state private university established under the Haryana Private Universities Act, 2006 and empowered to award degrees under section 2(f) of the UGC Act, 1956.\n\nThe same page lists recognition or approval links associated with the University Grants Commission, Haryana Government, Department of Higher Education Haryana, Council of Architecture, Pharmacy Council of India, National Council for Teacher Education, Bar Council of India, Directorate of Medical Education and Research Haryana, and Haryana State Council for Physiotherapy.\n\nFor regulatory or approval questions, this page should be treated as the primary public reference."
+    },
+    {
+      "id": "krmu_admissions_process_2026",
+      "title": "KRMU Admissions Process",
+      "category": "admissions",
+      "source_url": "https://www.krmangalam.edu.in/school-of-engineering-and-technology",
+      "verified_on": "2026-04-05",
+      "content": "# KRMU Admissions Process\n\nKRMU presents admissions as a six-step journey. The flow starts with beginning the application on the admissions portal, followed by payment and submission of the application form. The public admissions flow then includes the K.R. Mangalam University Entrance Examination or other applicable assessment, an interaction or interview stage, the issue of an admission offer letter, and final enrollment.\n\nFor programme-specific admissions, users should still check the relevant programme page because eligibility, scholarship, entrance requirements, and interview requirements can vary by course."
+    },
+    {
+      "id": "krmu_kree_2026",
+      "title": "KRMU Entrance Examination KREE",
+      "category": "admissions",
+      "source_url": "https://www.krmangalam.edu.in/kree",
+      "verified_on": "2026-04-05",
+      "content": "# KRMU Entrance Examination KREE\n\nThe official KREE page describes the K.R. Mangalam Entrance Examination as an admission gateway for multiple undergraduate and postgraduate programmes. The page says the exam uses objective-style questions such as sentence completion, matching, multiple choice items, and true-false questions.\n\nThe KREE page also shows that the examination supports admissions across multiple schools and disciplines, including Engineering and Technology, Management, Law, Medical and Allied fields, Liberal Arts, Design, Basic and Applied Sciences, Education, Agriculture, Hospitality, and Emerging Media."
+    },
+    {
+      "id": "krmu_scholarships_2026",
+      "title": "KRMU Scholarships and Scholarship Conditions",
+      "category": "financial_aid",
+      "source_url": "https://www.krmangalam.edu.in/admission/scholarship",
+      "verified_on": "2026-04-05",
+      "content": "# KRMU Scholarships and Scholarship Conditions\n\nThe official scholarship page presents scholarship slabs for the current intake and notes that scholarship availability is limited and subject to stated eligibility rules. The public page shows scholarship categories linked to qualifying marks and also references entrance-based and special categories such as sports.\n\nThe same page also lists continuation conditions for later installments. Those conditions include minimum attendance, passing the immediately preceding semester, and the absence of misconduct, indiscipline, or unfair means cases.\n\nStudents asking scholarship questions should still verify the exact table and programme-specific rules on the official scholarship page."
+    },
+    {
+      "id": "krmu_fee_policy_2026",
+      "title": "KRMU Fee Structure and Fee Policy Notes",
+      "category": "fees",
+      "source_url": "https://www.krmangalam.edu.in/fee-structure",
+      "verified_on": "2026-04-05",
+      "content": "# KRMU Fee Structure and Fee Policy Notes\n\nThe official fee structure page covers programme fees school-wise and includes categories such as Engineering and Technology, Management and Commerce, Basic and Applied Sciences, Medical and Allied Sciences, Physiotherapy and Rehabilitation Sciences, Architecture and Design, Legal Studies, Emerging Media and Creator Economy, Liberal Arts, Education, Hotel Management and Catering Technology, Agricultural Sciences, and Ph.D. programmes.\n\nThe fee page also states that fees payable in subsequent years may increase by up to 10 percent per annum, subject to approval by the competent authority. Students should always verify the current programme row for exact fee values."
+    },
+    {
+      "id": "krmu_placements_2026",
+      "title": "KRMU Placements Overview and Recruitment Flow",
+      "category": "placements",
+      "source_url": "https://www.krmangalam.edu.in/the-placements-process",
+      "verified_on": "2026-04-05",
+      "content": "# KRMU Placements Overview and Recruitment Flow\n\nThe official placements-related pages present KRMU as a strong recruiter-facing campus with broad industry participation. Public placement information highlights large recruiter participation, placement assistance, internships, skill development, and industry-linked preparation.\n\nThe placement process page explains that students are notified about recruitment schedules, attend pre-placement talks, and then move through the employer's screening stages. The university indicates that students are expected to participate fully in the recruitment process once registered unless eliminated by the recruiter.\n\nFor questions about recruiter visits, the placement process, and campus placement expectations, the placements section should be treated as the primary public source."
+    },
+    {
+      "id": "krmu_research_2026",
+      "title": "KRMU Research Innovation and Academic Ecosystem",
+      "category": "research",
+      "source_url": "https://www.krmangalam.edu.in/",
+      "verified_on": "2026-04-05",
+      "content": "# KRMU Research Innovation and Academic Ecosystem\n\nThe KRMU homepage presents the university as an innovation-driven academic ecosystem with research labs, publication activity, patents, grants, and industry collaboration. The public messaging emphasizes practical learning, entrepreneurship, global exposure, and research aligned with real-world impact.\n\nFor general research positioning, innovation activity, and university-wide academic ecosystem questions, the homepage and research-oriented sections are the primary references."
+    },
+    {
+      "id": "krmu_soet_overview_2026",
+      "title": "School of Engineering and Technology Overview",
+      "category": "school",
+      "source_url": "https://www.krmangalam.edu.in/school-of-engineering-and-technology",
+      "verified_on": "2026-04-05",
+      "content": "# School of Engineering and Technology Overview\n\nThe School of Engineering and Technology at K.R. Mangalam University presents itself as a major technical school offering undergraduate, postgraduate, and doctoral study. The school highlights practical learning, industry integration, innovation, laboratories, real-world problem solving, and strong career readiness.\n\nThe official school page also highlights collaborations and industry-linked learning support with organizations such as IBM, EC-Council, Samatrix, ImaginXP, and Xebia. For school-level questions about engineering culture, labs, collaborations, and programme positioning, the official SOET page is the primary source."
+    },
+    {
+      "id": "krmu_soet_faculty_2026",
+      "title": "School of Engineering and Technology Faculty and Leadership",
+      "category": "faculty",
+      "source_url": "https://www.krmangalam.edu.in/soet-2/",
+      "verified_on": "2026-04-05",
+      "content": "# School of Engineering and Technology Faculty and Leadership\n\nThe official SOET faculty page presents Prof. (Dr.) Pankaj Agarwal as Dean of the School of Engineering and Technology. The same page publicly lists faculty entries under Faculty at SOET, including Assistant Professors such as Mr. Aryan Sharma, Ms. Jyoti Yadav, Ms. Jyoti Kaurav, and Ms. Ritu Devi.\n\nBecause faculty rosters can change over time, the SOET faculty page should be treated as the primary public source for named faculty and leadership information inside the School of Engineering and Technology."
+    },
+    {
+      "id": "krmu_btech_cse_2026",
+      "title": "B.Tech Computer Science and Engineering at KRMU",
+      "category": "programme",
+      "source_url": "https://www.krmangalam.edu.in/programs/b-tech-cse",
+      "verified_on": "2026-04-05",
+      "content": "# B.Tech Computer Science and Engineering at KRMU\n\nThe official B.Tech CSE page presents the programme as a four-year undergraduate course. The page highlights core areas such as programming, algorithms, databases, operating systems, and software engineering along with emerging areas including Artificial Intelligence, Machine Learning, Data Science, Cyber Security, Internet of Things, Full Stack Development, and UI or UX themes.\n\nThe official programme page also emphasizes an industry-integrated curriculum, project-based learning, expert faculty, and career-oriented training support. Programme-specific eligibility and fee details should always be confirmed from the live programme page."
+    },
+    {
+      "id": "krmu_infrastructure_2026",
+      "title": "KRMU Infrastructure and Campus Facilities",
+      "category": "infrastructure",
+      "source_url": "https://admissions.krmangalam.edu.in/",
+      "verified_on": "2026-04-05",
+      "content": "# KRMU Infrastructure and Campus Facilities\n\nThe official admissions and campus pages present KRMU as a campus with smart classrooms, high-end computer labs, a well-stocked library, project-based learning spaces, hostel accommodation, sports grounds, a gymnasium, and student support areas. Public campus material also emphasizes a modern learning environment, practical labs, and student-centric infrastructure.\n\nFor infrastructure-related questions, the official admissions and campus pages are good public references for major facility categories such as labs, library access, hostels, sports, gym, and classroom infrastructure."
+    },
+    {
+      "id": "krmu_hostels_2026",
+      "title": "KRMU Hostels Facilities Fees and Contacts",
+      "category": "hostel",
+      "source_url": "https://www.krmangalam.edu.in/hostel",
+      "verified_on": "2026-04-05",
+      "content": "# KRMU Hostels Facilities Fees and Contacts\n\nThe hostel page states that KRMU provides separate hostels for female and male students and identifies them publicly as Gayatri Hostel and Vivekanand Hostel. The page highlights furnished shared accommodation, campus convenience, security systems, recreation and sports support, gym access, and free high-speed Wi-Fi.\n\nThe same public page also lists hostel fee and security deposit information and provides official hostel contact numbers for the Chief Warden, Boys Warden, and Girls Warden. Hostel charges and policies should always be confirmed from the live hostel page."
+    },
+    {
+      "id": "krmu_library_digital_2026",
+      "title": "KRMU Library Catalog and Digital Learning Platforms",
+      "category": "library",
+      "source_url": "https://opac.krmangalam.edu.in/",
+      "verified_on": "2026-04-05",
+      "content": "# KRMU Library Catalog and Digital Learning Platforms\n\nKRMU's official digital ecosystem includes a public Central Library catalog hosted on the university OPAC platform. The OPAC identifies itself as the Central Library, K.R. Mangalam University, Sohna Road, Gurugram, Haryana 122103, and lists the library email as library@krmangalam.edu.in.\n\nThe official university site also links major digital academic systems such as LMS and ERP. For library access, catalog discovery, and core digital learning systems, the OPAC, LMS, and ERP references should be treated as the main public sources."
+    },
+    {
+      "id": "krmu_contact_2026",
+      "title": "KRMU Contact Details and Main Admission Support",
+      "category": "contact",
+      "source_url": "https://www.krmangalam.edu.in/contact-us",
+      "verified_on": "2026-04-05",
+      "content": "# KRMU Contact Details and Main Admission Support\n\nThe official contact page lists the main university address as Sohna Road, Gurugram, Haryana 122103. For general and admissions-related queries, the page provides the main support numbers and the official admissions email address admissions@krmangalam.edu.in.\n\nThe same page also lists regional outreach contacts and promotes campus visits and virtual tours. For enquiries about visiting, admissions help, or regional office support, the contact page should be treated as the primary public reference."
+    },
+    {
+      "id": "krmu_conversation_greetings_2026",
+      "title": "KRMU Conversational Greetings and Help Intents",
+      "category": "conversation",
+      "source_url": "internal://conversation",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Conversational Greetings and Help Intents\n\nFor greetings such as hello, hi, good morning, good afternoon, or can you help me, the assistant should respond warmly and briefly. It should introduce itself as a K.R. Mangalam University assistant and invite the user to ask about admissions, programmes, faculty, fees, infrastructure, hostels, placements, library, scholarships, or contact details.\n\nIf the user is unsure what to ask next, the assistant should guide them with two or three concrete options instead of a vague open-ended reply."
+    },
+    {
+      "id": "krmu_conversation_followup_2026",
+      "title": "KRMU Multi Turn Follow Up Guidance",
+      "category": "conversation",
+      "source_url": "internal://conversation",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Multi Turn Follow Up Guidance\n\nIn multi-turn conversations, the assistant should remember the most recent user topic and keep follow-up answers connected to that topic. For example, if the user first asks about hostels and then asks about fees, the assistant should understand that the follow-up likely refers to hostel fees unless the user changes the topic clearly.\n\nThe assistant should use short natural bridging phrases such as based on your hostel question or continuing from your admissions question when that helps clarity. It should avoid repeating a full introduction in every turn."
+    },
+    {
+      "id": "krmu_conversation_limits_2026",
+      "title": "KRMU Conversational Limits and Escalation",
+      "category": "conversation",
+      "source_url": "internal://conversation",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Conversational Limits and Escalation\n\nIf the assistant does not find enough grounded information in the indexed knowledge base, it should say that clearly and suggest a better next step. Good next steps include rephrasing the question, asking a narrower question, uploading a document, or checking the official KRMU contact or programme pages.\n\nThe assistant should stay polite and helpful, but it should not invent details. It should prefer a short honest response plus a useful follow-up question over a vague generic apology."
+    }
+  ]
+}

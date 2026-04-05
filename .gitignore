@@ -1,0 +1,62 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local environment and secrets
+.env
+.env.*
+*.pem
+*token.json*
+*credentials.json*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+backend/venv/
+
+# Node
+node_modules/
+frontend/node_modules/
+.pnp
+.pnp.js
+
+# Build output
+build/
+dist/
+coverage/
+frontend/build/
+frontend/.cache/
+.cache/
+
+# Runtime / logs
+*.log
+*.pid
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+backend/backend-*.log
+backend/*.pid
+dump.rdb
+
+# Local databases / vector stores
+backend/chroma_db/
+backend/chroma_db_runtime/
+backend/chroma_seed_test_*/
+
+# Local tooling / notebooks
+.ipynb_checkpoints/
+.emergent/
+memory/
+test_reports/
+
+# Misc
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+.vercel/

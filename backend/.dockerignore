@@ -1,0 +1,12 @@
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+backend-*.log
+server_stdout.log
+server_stderr.log
+error_log.txt
+chroma_db
+chroma_seed_test_*
