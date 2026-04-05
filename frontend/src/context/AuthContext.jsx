@@ -305,6 +305,9 @@ export const AuthProvider = ({ children }) => {
         provider: "google",
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            prompt: "select_account",
+          },
         },
       });
 
