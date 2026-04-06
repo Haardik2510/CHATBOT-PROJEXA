@@ -105,16 +105,20 @@ def _resolve_cors_origin_regex(explicit_origins: List[str]) -> Optional[str]:
     return None
 
 
-def _document_process_timeout_seconds(file_type: str, file_size: int) -> int:
+def _document_process_timeout_seconds(file_type: str, file_size: int) -> Optional[int]:
     """Scale extraction timeout with file size, especially for large PDFs."""
+    if _should_disable_global_document_timeout(file_type, file_size):
+        return None
     size_mb = max(file_size / (1024 * 1024), 0.0)
     per_mb = 28 if file_type == "pdf" else 8
     timeout = int(DOCUMENT_PROCESS_BASE_TIMEOUT_SECONDS + (size_mb * per_mb))
     return min(max(timeout, DOCUMENT_PROCESS_BASE_TIMEOUT_SECONDS), DOCUMENT_PROCESS_MAX_TIMEOUT_SECONDS)
 
 
-def _document_index_timeout_seconds(chunk_count: int, file_size: int) -> int:
+def _document_index_timeout_seconds(chunk_count: int, file_size: int) -> Optional[int]:
     """Scale indexing timeout based on chunk count and document size."""
+    if _should_disable_global_document_timeout("pdf", file_size):
+        return None
     size_mb = max(file_size / (1024 * 1024), 0.0)
     timeout = int(
         DOCUMENT_INDEX_BASE_TIMEOUT_SECONDS
@@ -122,6 +126,12 @@ def _document_index_timeout_seconds(chunk_count: int, file_size: int) -> int:
         + size_mb * 12
     )
     return min(max(timeout, DOCUMENT_INDEX_BASE_TIMEOUT_SECONDS), DOCUMENT_INDEX_MAX_TIMEOUT_SECONDS)
+
+
+def _should_disable_global_document_timeout(file_type: str, file_size: int) -> bool:
+    """Allow large PDFs to finish in the background instead of hitting an app-level timeout."""
+    size_mb = max(file_size / (1024 * 1024), 0.0)
+    return file_type == "pdf" and size_mb >= 8
 
 # ==================== Helper Functions ====================
 
@@ -1179,12 +1189,21 @@ async def process_document_background(
         await store.update_document(document_id, {"status": "processing"})
 
         extraction_timeout = _document_process_timeout_seconds(file_type, file_size)
+        indexing_timeout = _document_index_timeout_seconds(0, file_size)
+        disable_global_timeout = _should_disable_global_document_timeout(file_type, file_size)
         
         # Process the document
-        result = await asyncio.wait_for(
-            asyncio.to_thread(DocumentProcessor.process_file, file_content, file_type),
-            timeout=extraction_timeout
-        )
+        extraction_task = asyncio.to_thread(DocumentProcessor.process_file, file_content, file_type)
+        if disable_global_timeout:
+            logger.info(
+                "Processing large %s document %s without a global extraction timeout (size=%s bytes)",
+                file_type,
+                document_id,
+                file_size,
+            )
+            result = await extraction_task
+        else:
+            result = await asyncio.wait_for(extraction_task, timeout=extraction_timeout)
         
         if not result["success"]:
             await store.update_document(
@@ -1196,21 +1215,28 @@ async def process_document_background(
         indexing_timeout = _document_index_timeout_seconds(len(result.get("chunks") or []), file_size)
 
         # Add to RAG engine
-        chunk_count = await asyncio.wait_for(
-            asyncio.to_thread(
-                rag_engine.add_document_chunks,
-                document_id=document_id,
-                document_title=title,
-                chunks=result["chunks"],
-                metadata={
-                    "doc_type": file_type,
-                    "used_ocr": bool(result.get("used_ocr")),
-                    "ocr_engine": result.get("ocr_engine", ""),
-                    "ocr_quality_score": float(result.get("ocr_quality_score", 0.0) or 0.0),
-                }
-            ),
-            timeout=indexing_timeout
+        indexing_task = asyncio.to_thread(
+            rag_engine.add_document_chunks,
+            document_id=document_id,
+            document_title=title,
+            chunks=result["chunks"],
+            metadata={
+                "doc_type": file_type,
+                "used_ocr": bool(result.get("used_ocr")),
+                "ocr_engine": result.get("ocr_engine", ""),
+                "ocr_quality_score": float(result.get("ocr_quality_score", 0.0) or 0.0),
+            }
         )
+        if disable_global_timeout:
+            logger.info(
+                "Indexing large %s document %s without a global indexing timeout (%s chunks)",
+                file_type,
+                document_id,
+                len(result.get("chunks") or []),
+            )
+            chunk_count = await indexing_task
+        else:
+            chunk_count = await asyncio.wait_for(indexing_task, timeout=indexing_timeout)
         
         # Update document status
         await store.update_document(

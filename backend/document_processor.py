@@ -41,6 +41,9 @@ class DocumentProcessor:
         if text_length >= 2_000_000 or page_count >= 180 or size_mb >= 45:
             chunk_size = 2800
             overlap = 320
+        if used_ocr and (text_length >= 3_000_000 or page_count >= 240 or size_mb >= 60):
+            chunk_size = 3600
+            overlap = 360
 
         return chunk_size, overlap
 
@@ -49,13 +52,13 @@ class DocumentProcessor:
         """Reduce OCR image resolution for very large scanned PDFs to avoid timeouts."""
         size_mb = max(file_size_bytes / (1024 * 1024), 0.0)
         if page_count >= 150 or size_mb >= 60:
-            return 1.1
+            return 1.0
         if page_count >= 100 or size_mb >= 40:
-            return 1.25
+            return 1.15
         if page_count >= 60 or size_mb >= 25:
-            return 1.45
+            return 1.3
         if page_count >= 25 or size_mb >= 10:
-            return 1.7
+            return 1.55
         return 2.0
 
     @staticmethod
