@@ -1162,7 +1162,12 @@ async def process_document_background(document_id: str, file_content: bytes, fil
                 document_id=document_id,
                 document_title=title,
                 chunks=result["chunks"],
-                metadata={"doc_type": file_type}
+                metadata={
+                    "doc_type": file_type,
+                    "used_ocr": bool(result.get("used_ocr")),
+                    "ocr_engine": result.get("ocr_engine", ""),
+                    "ocr_quality_score": float(result.get("ocr_quality_score", 0.0) or 0.0),
+                }
             ),
             timeout=300
         )

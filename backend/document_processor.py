@@ -3,7 +3,7 @@ import os
 import re
 import logging
 import shutil
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from io import BytesIO
 import httpx
 from bs4 import BeautifulSoup
@@ -34,6 +34,113 @@ class DocumentProcessor:
         text = re.sub(r' +', ' ', text)
         text = text.strip()
         return text
+
+    @classmethod
+    def clean_ocr_text(cls, text: str) -> str:
+        """Normalize OCR-heavy text while keeping useful structure."""
+        if not text:
+            return ""
+
+        text = text.replace("\x0c", "\n")
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"(?<=\w)-\s*\n\s*(?=\w)", "", text)
+        text = re.sub(r"(?<=\w)\s*\n\s*(?=\w)", " ", text)
+        text = re.sub(r"[|]{2,}", "|", text)
+        text = re.sub(r"[_]{2,}", "_", text)
+
+        cleaned_lines = []
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            alnum_count = sum(char.isalnum() for char in line)
+            if alnum_count == 0:
+                continue
+
+            symbol_count = sum(not char.isalnum() and not char.isspace() for char in line)
+            if len(line) >= 8 and (symbol_count / max(len(line), 1)) > 0.45:
+                continue
+
+            cleaned_lines.append(line)
+
+        return cls.clean_text("\n".join(cleaned_lines))
+
+    @staticmethod
+    def _text_quality_metrics(text: str) -> Dict[str, float]:
+        """Estimate extraction quality for OCR or weak PDF text."""
+        normalized = (text or "").strip()
+        if not normalized:
+            return {
+                "quality_score": 0.0,
+                "word_count": 0,
+                "alpha_ratio": 0.0,
+                "digit_ratio": 0.0,
+                "noise_ratio": 1.0,
+                "avg_word_length": 0.0,
+            }
+
+        letters = sum(char.isalpha() for char in normalized)
+        digits = sum(char.isdigit() for char in normalized)
+        spaces = sum(char.isspace() for char in normalized)
+        total_chars = len(normalized)
+        noise_chars = max(total_chars - letters - digits - spaces, 0)
+
+        words = re.findall(r"\b[\w/-]+\b", normalized)
+        word_count = len(words)
+        avg_word_length = (
+            sum(len(word) for word in words) / word_count
+            if word_count
+            else 0.0
+        )
+
+        alpha_ratio = letters / total_chars
+        digit_ratio = digits / total_chars
+        noise_ratio = noise_chars / total_chars
+
+        score = 0.0
+        if word_count >= 20:
+            score += 0.35
+        elif word_count >= 8:
+            score += 0.2
+        else:
+            score += 0.08
+
+        score += min(alpha_ratio, 0.55)
+        score += max(0.0, 0.18 - noise_ratio)
+        if 2.5 <= avg_word_length <= 12:
+            score += 0.08
+        if digit_ratio > 0.35:
+            score -= 0.08
+
+        return {
+            "quality_score": round(max(0.0, min(score, 1.0)), 3),
+            "word_count": word_count,
+            "alpha_ratio": round(alpha_ratio, 3),
+            "digit_ratio": round(digit_ratio, 3),
+            "noise_ratio": round(noise_ratio, 3),
+            "avg_word_length": round(avg_word_length, 3),
+        }
+
+    @classmethod
+    def _should_force_ocr(cls, extracted_text: str, page_count: int) -> bool:
+        """Decide when a PDF text layer is too weak and OCR should be attempted."""
+        metrics = cls._text_quality_metrics(extracted_text)
+        if metrics["word_count"] == 0:
+            return True
+        if page_count >= 2 and metrics["word_count"] < page_count * 25:
+            return True
+        return metrics["quality_score"] < 0.32
+
+    @staticmethod
+    def _merge_text_versions(primary_text: str, secondary_text: str) -> Tuple[str, Dict[str, float]]:
+        """Choose the cleaner text version using quality metrics."""
+        primary_metrics = DocumentProcessor._text_quality_metrics(primary_text)
+        secondary_metrics = DocumentProcessor._text_quality_metrics(secondary_text)
+
+        if secondary_metrics["quality_score"] > primary_metrics["quality_score"] + 0.08:
+            return secondary_text, secondary_metrics
+        return primary_text, primary_metrics
     
     @staticmethod
     def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
@@ -85,15 +192,28 @@ class DocumentProcessor:
                 if page_text:
                     text_parts.append(page_text)
             
-            full_text = cls.clean_text("\n".join(text_parts))
+            extracted_text = cls.clean_text("\n".join(text_parts))
             used_ocr = False
+            ocr_engine = None
 
-            if not full_text.strip():
+            if not extracted_text.strip() or cls._should_force_ocr(extracted_text, len(reader.pages)):
                 ocr_result = cls.ocr_pdf(file_content)
                 if not ocr_result["success"]:
-                    return ocr_result
-                full_text = cls.clean_text(ocr_result["text"])
-                used_ocr = True
+                    if not extracted_text.strip():
+                        return ocr_result
+                    full_text = extracted_text
+                    quality_metrics = cls._text_quality_metrics(full_text)
+                else:
+                    merged_text, quality_metrics = cls._merge_text_versions(
+                        extracted_text,
+                        cls.clean_ocr_text(ocr_result["text"]),
+                    )
+                    full_text = cls.clean_text(merged_text)
+                    used_ocr = True
+                    ocr_engine = ocr_result.get("ocr_engine")
+            else:
+                full_text = extracted_text
+                quality_metrics = cls._text_quality_metrics(full_text)
 
             chunks = cls.chunk_text(full_text)
             
@@ -102,7 +222,10 @@ class DocumentProcessor:
                 "text": full_text,
                 "chunks": chunks,
                 "page_count": len(reader.pages),
-                "used_ocr": used_ocr
+                "used_ocr": used_ocr,
+                "ocr_engine": ocr_engine,
+                "ocr_quality_score": quality_metrics.get("quality_score", 0.0),
+                "extraction_quality": quality_metrics,
             }
         except ImportError:
             logger.error("PDF support is unavailable because no PDF reader library is installed")
@@ -121,7 +244,7 @@ class DocumentProcessor:
         tesseract_cmd = cls._resolve_tesseract_command()
         try:
             import fitz
-            from PIL import Image
+            from PIL import Image, ImageFilter, ImageOps
         except ImportError as exc:
             logger.error("OCR dependencies missing: %s", exc)
             return {
@@ -164,18 +287,22 @@ class DocumentProcessor:
             for page_number, page in enumerate(pdf, start=1):
                 pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
                 image = Image.open(BytesIO(pix.tobytes("png")))
+                image = ImageOps.grayscale(image)
+                image = ImageOps.autocontrast(image)
+                image = image.filter(ImageFilter.SHARPEN)
                 if pytesseract:
-                    page_text = pytesseract.image_to_string(image)
+                    page_text = pytesseract.image_to_string(image, config="--psm 6")
                 else:
                     import numpy as np
                     ocr_result, _ = rapid_ocr(np.array(image))
                     page_text = "\n".join(item[1] for item in ocr_result) if ocr_result else ""
-                cleaned = cls.clean_text(page_text)
+                cleaned = cls.clean_ocr_text(page_text)
                 if cleaned:
                     text_parts.append(f"Page {page_number}\n{cleaned}")
 
             full_text = cls.clean_text("\n\n".join(text_parts))
             chunks = cls.chunk_text(full_text)
+            quality_metrics = cls._text_quality_metrics(full_text)
 
             if not chunks:
                 return {
@@ -189,7 +316,9 @@ class DocumentProcessor:
                 "text": full_text,
                 "chunks": chunks,
                 "used_ocr": True,
-                "ocr_engine": "tesseract" if ocr_with_tesseract else "rapidocr"
+                "ocr_engine": "tesseract" if ocr_with_tesseract else "rapidocr",
+                "ocr_quality_score": quality_metrics.get("quality_score", 0.0),
+                "extraction_quality": quality_metrics,
             }
         except Exception as exc:
             logger.error("OCR processing failed: %s", exc)
