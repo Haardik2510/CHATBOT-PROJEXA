@@ -3,6 +3,7 @@ import json
 import os
 import logging
 import hashlib
+import re
 from pathlib import Path
 from typing import AsyncIterator, Dict, List, Optional
 
@@ -419,6 +420,50 @@ class RAGEngine:
 
         raise RuntimeError("Unable to initialize a writable Chroma database")
 
+    @staticmethod
+    def _extract_query_terms(query: str, max_terms: int = 8) -> List[str]:
+        """Extract meaningful lowercase query terms for lexical retrieval."""
+        stopwords = {
+            "the", "and", "for", "with", "that", "this", "from", "what", "when",
+            "where", "which", "about", "into", "your", "have", "will", "would",
+            "could", "should", "tell", "please", "there", "their", "them", "just",
+            "does", "did", "are", "can", "how", "why", "who",
+        }
+        terms = []
+        for term in re.findall(r"[a-z0-9]+", (query or "").lower()):
+            if len(term) < 2 or term in stopwords or term in terms:
+                continue
+            terms.append(term)
+            if len(terms) >= max_terms:
+                break
+        return terms
+
+    @classmethod
+    def _score_lexical_match(cls, query: str, chunk_text: str, document_title: str = "") -> float:
+        """Score lexical similarity between the query and a chunk/title."""
+        haystack = f"{document_title} {chunk_text}".lower()
+        query_text = (query or "").strip().lower()
+        if not haystack.strip() or not query_text:
+            return 0.0
+
+        query_terms = cls._extract_query_terms(query_text)
+        if not query_terms:
+            return 0.0
+
+        score = 0.0
+        if query_text in haystack:
+            score += 0.55
+
+        match_count = sum(1 for term in query_terms if term in haystack)
+        score += 0.35 * (match_count / len(query_terms))
+
+        if document_title:
+            title_lower = document_title.lower()
+            title_matches = sum(1 for term in query_terms if term in title_lower)
+            score += 0.20 * (title_matches / len(query_terms))
+
+        return min(score, 1.0)
+
     def _detect_collection_dimension(self) -> Optional[int]:
         """Inspect the existing collection and return its embedding dimension if known."""
         try:
@@ -433,6 +478,107 @@ class RAGEngine:
             logger.warning("Unable to detect Chroma embedding dimension: %s", exc)
 
         return None
+
+    def _search_supabase_lexical(self, query: str, top_k: int) -> List[Dict]:
+        """Search Supabase chunks lexically when semantic embeddings are unavailable or weak."""
+        if not self.supabase:
+            return []
+
+        query_terms = self._extract_query_terms(query)
+        search_limit = max(40, top_k * 12)
+
+        base_query = self.supabase.table("document_chunks").select(
+            "document_id, chunk_index, chunk_text, metadata"
+        )
+
+        if query_terms:
+            clauses = ",".join([f"chunk_text.ilike.%{term}%" for term in query_terms[:6]])
+            response = base_query.or_(clauses).limit(search_limit).execute()
+        else:
+            response = base_query.limit(search_limit).execute()
+
+        ranked = []
+        for row in response.data or []:
+            metadata = row.get("metadata") or {}
+            title = metadata.get("document_title", "Unknown")
+            score = self._score_lexical_match(query, row.get("chunk_text", ""), title)
+            if score <= 0:
+                continue
+            ranked.append(
+                {
+                    "content": row.get("chunk_text", ""),
+                    "document_id": row.get("document_id", ""),
+                    "document_title": title,
+                    "chunk_index": row.get("chunk_index", 0),
+                    "relevance_score": score,
+                }
+            )
+
+        if not ranked and query_terms:
+            # Fallback to a broader scan when a strict ilike filter misses paraphrased content.
+            response = base_query.limit(max(120, search_limit)).execute()
+            for row in response.data or []:
+                metadata = row.get("metadata") or {}
+                title = metadata.get("document_title", "Unknown")
+                score = self._score_lexical_match(query, row.get("chunk_text", ""), title)
+                if score <= 0:
+                    continue
+                ranked.append(
+                    {
+                        "content": row.get("chunk_text", ""),
+                        "document_id": row.get("document_id", ""),
+                        "document_title": title,
+                        "chunk_index": row.get("chunk_index", 0),
+                        "relevance_score": score,
+                    }
+                )
+
+        ranked.sort(key=lambda item: item.get("relevance_score", 0), reverse=True)
+        return ranked[:top_k]
+
+    def _search_chroma_lexical(self, query: str, top_k: int) -> List[Dict]:
+        """Search locally stored Chroma documents lexically."""
+        if self.collection.count() == 0:
+            return []
+
+        payload = self.collection.get(include=["documents", "metadatas"])
+        documents = payload.get("documents") or []
+        metadatas = payload.get("metadatas") or []
+
+        ranked = []
+        for doc, meta in zip(documents, metadatas):
+            metadata = meta or {}
+            title = metadata.get("document_title", "Unknown")
+            score = self._score_lexical_match(query, doc or "", title)
+            if score <= 0:
+                continue
+            ranked.append(
+                {
+                    "content": doc or "",
+                    "document_id": metadata.get("document_id", ""),
+                    "document_title": title,
+                    "chunk_index": metadata.get("chunk_index", 0),
+                    "relevance_score": score,
+                }
+            )
+
+        ranked.sort(key=lambda item: item.get("relevance_score", 0), reverse=True)
+        return ranked[:top_k]
+
+    @staticmethod
+    def _merge_ranked_results(primary: List[Dict], secondary: List[Dict], top_k: int) -> List[Dict]:
+        """Merge ranked retrieval results without duplicate chunks."""
+        merged = []
+        seen = set()
+        for item in primary + secondary:
+            key = (item.get("document_id"), item.get("chunk_index"))
+            if key in seen:
+                continue
+            merged.append(item)
+            seen.add(key)
+            if len(merged) >= top_k:
+                break
+        return merged
 
     def _align_embedding_dimension(
         self,
@@ -861,6 +1007,25 @@ Summarize the most reliable answer supported by the snippets above."""
 
     def search(self, query: str, top_k: int = 5) -> List[Dict]:
         """Search for relevant document chunks."""
+        lexical_results: List[Dict] = []
+        if self.use_supabase_vectors:
+            try:
+                lexical_results = self._search_supabase_lexical(query, top_k)
+            except Exception as exc:
+                logger.warning("Supabase lexical search failed: %s", exc)
+        else:
+            try:
+                lexical_results = self._search_chroma_lexical(query, top_k)
+            except Exception as exc:
+                logger.warning("Chroma lexical search failed: %s", exc)
+
+        # If no real embedding model is available, lexical retrieval is the most reliable mode.
+        if not self.ollama.is_available:
+            if lexical_results:
+                self.last_vector_backend_used = "supabase_lexical" if self.use_supabase_vectors else "chroma_lexical"
+                return lexical_results
+            return []
+
         raw_query_embedding = self.ollama.generate_embedding(query)
         query_embedding = self._align_embedding_dimension(
             raw_query_embedding,
@@ -876,7 +1041,10 @@ Summarize the most reliable answer supported by the snippets above."""
                 results = self._search_supabase(query_embedding, top_k)
                 if results:
                     self.last_vector_backend_used = "supabase"
-                    return results
+                    if lexical_results and max(result.get("relevance_score", 0) for result in results) < 0.45:
+                        self.last_vector_backend_used = "supabase_lexical"
+                        return self._merge_ranked_results(lexical_results, results, top_k)
+                    return self._merge_ranked_results(results, lexical_results, top_k)
             except Exception as exc:
                 logger.warning("Supabase vector search failed, falling back to Chroma: %s", exc)
 
@@ -930,7 +1098,17 @@ Summarize the most reliable answer supported by the snippets above."""
                     }
                 )
 
-        return retrieved
+        if retrieved:
+            if lexical_results and max(doc.get("relevance_score", 0) for doc in retrieved) < 0.45:
+                self.last_vector_backend_used = "chroma_lexical"
+                return self._merge_ranked_results(lexical_results, retrieved, top_k)
+            return self._merge_ranked_results(retrieved, lexical_results, top_k)
+
+        if lexical_results:
+            self.last_vector_backend_used = "chroma_lexical" if not self.use_supabase_vectors else "supabase_lexical"
+            return lexical_results
+
+        return []
 
     def format_sources(self, retrieved_docs: List[Dict]) -> List[Dict]:
         """Format retrieved chunks into unique source citations."""
