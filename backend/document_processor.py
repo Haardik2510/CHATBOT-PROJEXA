@@ -18,6 +18,20 @@ class DocumentProcessor:
     CHUNK_OVERLAP = 200
 
     @staticmethod
+    def _ocr_render_scale(page_count: int, file_size_bytes: int) -> float:
+        """Reduce OCR image resolution for very large scanned PDFs to avoid timeouts."""
+        size_mb = max(file_size_bytes / (1024 * 1024), 0.0)
+        if page_count >= 150 or size_mb >= 60:
+            return 1.1
+        if page_count >= 100 or size_mb >= 40:
+            return 1.25
+        if page_count >= 60 or size_mb >= 25:
+            return 1.45
+        if page_count >= 25 or size_mb >= 10:
+            return 1.7
+        return 2.0
+
+    @staticmethod
     def _resolve_tesseract_command() -> Optional[str]:
         """Resolve the Tesseract executable for OCR."""
         configured = os.environ.get("TESSERACT_CMD")
@@ -284,8 +298,10 @@ class DocumentProcessor:
                         "chunks": []
                     }
 
+            render_scale = cls._ocr_render_scale(pdf.page_count, len(file_content))
+
             for page_number, page in enumerate(pdf, start=1):
-                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                pix = page.get_pixmap(matrix=fitz.Matrix(render_scale, render_scale), alpha=False)
                 image = Image.open(BytesIO(pix.tobytes("png")))
                 image = ImageOps.grayscale(image)
                 image = ImageOps.autocontrast(image)

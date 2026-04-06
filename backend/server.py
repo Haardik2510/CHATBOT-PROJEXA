@@ -73,6 +73,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+DOCUMENT_PROCESS_BASE_TIMEOUT_SECONDS = max(300, int(os.environ.get("DOCUMENT_PROCESS_BASE_TIMEOUT_SECONDS", "300")))
+DOCUMENT_PROCESS_MAX_TIMEOUT_SECONDS = max(
+    DOCUMENT_PROCESS_BASE_TIMEOUT_SECONDS,
+    int(os.environ.get("DOCUMENT_PROCESS_MAX_TIMEOUT_SECONDS", "1800")),
+)
+DOCUMENT_INDEX_BASE_TIMEOUT_SECONDS = max(300, int(os.environ.get("DOCUMENT_INDEX_BASE_TIMEOUT_SECONDS", "300")))
+DOCUMENT_INDEX_MAX_TIMEOUT_SECONDS = max(
+    DOCUMENT_INDEX_BASE_TIMEOUT_SECONDS,
+    int(os.environ.get("DOCUMENT_INDEX_MAX_TIMEOUT_SECONDS", "1800")),
+)
+
 
 def _parse_cors_origins(raw_value: str) -> List[str]:
     """Parse comma-separated CORS origins while ignoring blanks."""
@@ -92,6 +103,25 @@ def _resolve_cors_origin_regex(explicit_origins: List[str]) -> Optional[str]:
         return r"^https://([a-zA-Z0-9-]+\.)*vercel\.app$"
 
     return None
+
+
+def _document_process_timeout_seconds(file_type: str, file_size: int) -> int:
+    """Scale extraction timeout with file size, especially for large PDFs."""
+    size_mb = max(file_size / (1024 * 1024), 0.0)
+    per_mb = 18 if file_type == "pdf" else 8
+    timeout = int(DOCUMENT_PROCESS_BASE_TIMEOUT_SECONDS + (size_mb * per_mb))
+    return min(max(timeout, DOCUMENT_PROCESS_BASE_TIMEOUT_SECONDS), DOCUMENT_PROCESS_MAX_TIMEOUT_SECONDS)
+
+
+def _document_index_timeout_seconds(chunk_count: int, file_size: int) -> int:
+    """Scale indexing timeout based on chunk count and document size."""
+    size_mb = max(file_size / (1024 * 1024), 0.0)
+    timeout = int(
+        DOCUMENT_INDEX_BASE_TIMEOUT_SECONDS
+        + min(chunk_count, 1200) * 1.2
+        + size_mb * 6
+    )
+    return min(max(timeout, DOCUMENT_INDEX_BASE_TIMEOUT_SECONDS), DOCUMENT_INDEX_MAX_TIMEOUT_SECONDS)
 
 # ==================== Helper Functions ====================
 
@@ -1136,16 +1166,24 @@ async def get_chat_session(
 
 # ==================== Document Routes ====================
 
-async def process_document_background(document_id: str, file_content: bytes, file_type: str, title: str):
+async def process_document_background(
+    document_id: str,
+    file_content: bytes,
+    file_type: str,
+    title: str,
+    file_size: int,
+):
     """Background task to process and index a document"""
     try:
         # Update status to processing
         await store.update_document(document_id, {"status": "processing"})
+
+        extraction_timeout = _document_process_timeout_seconds(file_type, file_size)
         
         # Process the document
         result = await asyncio.wait_for(
             asyncio.to_thread(DocumentProcessor.process_file, file_content, file_type),
-            timeout=300
+            timeout=extraction_timeout
         )
         
         if not result["success"]:
@@ -1155,6 +1193,8 @@ async def process_document_background(document_id: str, file_content: bytes, fil
             )
             return
         
+        indexing_timeout = _document_index_timeout_seconds(len(result.get("chunks") or []), file_size)
+
         # Add to RAG engine
         chunk_count = await asyncio.wait_for(
             asyncio.to_thread(
@@ -1169,7 +1209,7 @@ async def process_document_background(document_id: str, file_content: bytes, fil
                     "ocr_quality_score": float(result.get("ocr_quality_score", 0.0) or 0.0),
                 }
             ),
-            timeout=300
+            timeout=indexing_timeout
         )
         
         # Update document status
@@ -1190,8 +1230,8 @@ async def process_document_background(document_id: str, file_content: bytes, fil
             {
                 "status": "failed",
                 "error_message": (
-                    "Document processing timed out. Try a smaller file, a text-based PDF, "
-                    "or split this document into parts."
+                    "Document processing timed out on the server. Large scanned PDFs take much longer than text-based files. "
+                    "Try again after redeploying the latest backend, or split very large scanned documents into smaller parts."
                 ),
             },
         )
@@ -1301,7 +1341,8 @@ async def upload_document(
         document.id,
         file_content,
         doc_type,
-        title
+        title,
+        file_size,
     )
     
     return {
