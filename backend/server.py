@@ -1623,16 +1623,23 @@ async def refresh_ollama_connection(
         raise HTTPException(status_code=403, detail="Admin access required")
     
     status = rag_engine.refresh_model_connections()
+    rag_stats = rag_engine.get_stats()
+    chat_provider = rag_stats.get("chat_provider", "fallback")
+    chat_model = rag_stats.get("chat_model", "unknown")
+
+    if status["remote_llm_available"]:
+        message = f"Remote LLM connection active ({chat_model})"
+    elif status["ollama_available"]:
+        message = f"Ollama fallback active ({chat_model})"
+    else:
+        message = "No remote LLM or Ollama backend is currently available"
     
     return {
         "ollama_available": status["ollama_available"],
         "remote_llm_available": status["remote_llm_available"],
-        "chat_provider": rag_engine.get_stats().get("chat_provider", "fallback"),
-        "message": (
-            "Remote vLLM connection active"
-            if status["remote_llm_available"]
-            else "Remote vLLM unavailable - using local Ollama fallback"
-        )
+        "chat_provider": chat_provider,
+        "chat_model": chat_model,
+        "message": message,
     }
 
 

@@ -82,18 +82,20 @@ export default function KnowledgeBaseSettings() {
     }
   };
 
-  const refreshOllama = async () => {
+  const refreshModels = async () => {
     setIsRefreshing(true);
     try {
       const response = await axios.post(`${API}/admin/refresh-ollama`);
-      if (response.data.ollama_available) {
-        toast.success("Ollama connected successfully!");
+      if (response.data.remote_llm_available) {
+        toast.success(response.data.message || "Remote model connection is active.");
+      } else if (response.data.ollama_available) {
+        toast.success(response.data.message || "Ollama fallback connected successfully.");
       } else {
-        toast.warning("Ollama not available - using fallback mode");
+        toast.warning(response.data.message || "No model provider is currently available.");
       }
       fetchStatus();
     } catch (error) {
-      toast.error("Failed to refresh Ollama connection");
+      toast.error("Failed to refresh model connection");
     } finally {
       setIsRefreshing(false);
     }
@@ -108,6 +110,9 @@ export default function KnowledgeBaseSettings() {
   }
 
   const ollamaAvailable = status?.rag_stats?.ollama_available;
+  const remoteLlmAvailable = status?.rag_stats?.remote_llm_available;
+  const chatProvider = status?.rag_stats?.chat_provider || "unknown";
+  const isAiAvailable = Boolean(remoteLlmAvailable || ollamaAvailable);
   const categories = status?.categories || {};
 
   return (
@@ -126,14 +131,14 @@ export default function KnowledgeBaseSettings() {
             Knowledge Base Settings
           </h2>
           <p className="text-sm text-[#6b7280]">
-            Manage RAG documents and Ollama integration
+            Manage RAG documents and model-provider connectivity
           </p>
         </div>
       </motion.div>
 
       {/* Status Cards */}
       <div className="grid md:grid-cols-2 gap-4">
-        {/* Ollama Status */}
+        {/* Model Provider Status */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -143,24 +148,32 @@ export default function KnowledgeBaseSettings() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Cpu className="w-5 h-5 text-[#FFBA00]" />
-              <h3 className="font-heading font-semibold text-white">Ollama LLM</h3>
+              <h3 className="font-heading font-semibold text-white">Model Provider</h3>
             </div>
             <Badge
               variant="outline"
               className={
-                ollamaAvailable
+                isAiAvailable
                   ? "bg-green-500/20 text-green-400 border-green-500/30"
                   : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
               }
             >
-              {ollamaAvailable ? (
+              {isAiAvailable ? (
                 <><CheckCircle className="w-3 h-3 mr-1" /> Connected</>
               ) : (
-                <><XCircle className="w-3 h-3 mr-1" /> Fallback Mode</>
+                <><XCircle className="w-3 h-3 mr-1" /> Unavailable</>
               )}
             </Badge>
           </div>
           <div className="space-y-2 text-sm text-[#9ca3af] mb-4">
+            <p>
+              <span className="text-[#6b7280]">Active Provider:</span>{" "}
+              {chatProvider === "vllm"
+                ? "Remote LLM (Groq-compatible)"
+                : chatProvider === "ollama"
+                  ? "Ollama"
+                  : "Unavailable"}
+            </p>
             <p>
               <span className="text-[#6b7280]">Chat Model:</span>{" "}
               {status?.rag_stats?.chat_model || "N/A"}
@@ -171,7 +184,7 @@ export default function KnowledgeBaseSettings() {
             </p>
           </div>
           <Button
-            onClick={refreshOllama}
+            onClick={refreshModels}
             disabled={isRefreshing}
             variant="outline"
             size="sm"
@@ -182,7 +195,7 @@ export default function KnowledgeBaseSettings() {
             ) : (
               <RefreshCw className="w-4 h-4 mr-2" />
             )}
-            Refresh Connection
+            Refresh Model Status
           </Button>
         </motion.div>
 
@@ -307,8 +320,8 @@ export default function KnowledgeBaseSettings() {
         </div>
       </motion.div>
 
-      {/* Ollama Setup Instructions */}
-      {!ollamaAvailable && (
+      {/* Model Setup Instructions */}
+      {!isAiAvailable && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -316,12 +329,14 @@ export default function KnowledgeBaseSettings() {
           className="card-surface p-5 border-l-4 border-yellow-500"
         >
           <h3 className="font-heading font-semibold text-white mb-2">
-            Enable Intelligent Responses with Ollama
+            Enable Intelligent Responses
           </h3>
           <p className="text-sm text-[#6b7280] mb-3">
-            The chatbot is running in fallback mode. To enable AI-powered responses:
+            No active model provider is available right now. Enable either the remote LLM or Ollama:
           </p>
           <div className="bg-[#12151a] rounded-lg p-4 font-mono text-sm text-[#9ca3af]">
+            <p className="text-[#FFBA00] mb-2"># Remote provider</p>
+            <p className="mb-2">Set LLM_BASE_URL, LLM_API_KEY, and LLM_MODEL in the backend environment</p>
             <p className="text-[#FFBA00] mb-2"># Install Ollama</p>
             <p className="mb-2">curl -fsSL https://ollama.com/install.sh | sh</p>
             <p className="text-[#FFBA00] mb-2"># Pull a model (choose one)</p>
@@ -333,7 +348,7 @@ export default function KnowledgeBaseSettings() {
             <p>ollama serve</p>
           </div>
           <p className="text-xs text-[#6b7280] mt-3">
-            After setup, click "Refresh Connection" to enable AI responses.
+            After setup, click "Refresh Model Status" to re-check provider availability.
           </p>
         </motion.div>
       )}
