@@ -471,7 +471,93 @@ class RAGEngine:
             title_matches = sum(1 for term in query_terms if term in title_lower)
             score += 0.15 * (title_matches / len(query_terms))
 
+        score += cls._intent_score_adjustment(query_text, haystack)
         return min(score, 1.0)
+
+    @staticmethod
+    def _looks_like_overview_query(query_text: str) -> bool:
+        """Detect broad overview-style questions about the university."""
+        normalized = (query_text or "").strip().lower()
+        overview_phrases = (
+            "tell me about",
+            "what is krmu",
+            "what is k r mangalam university",
+            "what is kr mangalam university",
+            "about krmu",
+            "about k.r. mangalam university",
+            "about kr mangalam university",
+            "university overview",
+            "give me an overview",
+        )
+        return any(phrase in normalized for phrase in overview_phrases)
+
+    @classmethod
+    def _intent_score_adjustment(cls, query_text: str, haystack: str) -> float:
+        """Adjust lexical scoring for broad overview queries and noisy PDF boilerplate."""
+        adjustment = 0.0
+        if cls._looks_like_overview_query(query_text):
+            overview_markers = (
+                "university overview",
+                "basic information",
+                "full name",
+                "established",
+                "location",
+                "vision",
+                "mission",
+                "group & history",
+                "group and history",
+                "ugc",
+                "recognised",
+            )
+            overview_hits = sum(1 for marker in overview_markers if marker in haystack)
+            if overview_hits:
+                adjustment += min(0.30, 0.12 + (overview_hits * 0.06))
+
+            noisy_markers = (
+                "dataset compiled for internal chatbot training purposes",
+                "institutional dataset",
+                "page ",
+                "whatsapp",
+                "facebook",
+                "instagram",
+                "linkedin",
+                "youtube",
+                "fee payment",
+                "seat allotment",
+                "phone number",
+                "official website",
+                "highest ctc",
+                "campus recruiters",
+                "whatsapp +91",
+                "24x7 ambulance",
+            )
+            noisy_hits = sum(1 for marker in noisy_markers if marker in haystack)
+            if noisy_hits:
+                adjustment -= min(0.24, noisy_hits * 0.08)
+
+        return adjustment
+
+    @staticmethod
+    def _result_signature(item: Dict) -> str:
+        """Generate a stable signature for deduplicating near-identical retrieved chunks."""
+        title = (item.get("document_title") or "").strip().lower()
+        content = re.sub(r"\s+", " ", (item.get("content") or "").strip().lower())
+        return f"{title}|{content[:180]}"
+
+    @classmethod
+    def _dedupe_ranked_results(cls, items: List[Dict], top_k: int) -> List[Dict]:
+        """Drop duplicate chunks that come from repeated uploads of the same content."""
+        deduped = []
+        seen = set()
+        for item in sorted(items, key=lambda entry: entry.get("relevance_score", 0), reverse=True):
+            signature = cls._result_signature(item)
+            if signature in seen:
+                continue
+            deduped.append(item)
+            seen.add(signature)
+            if len(deduped) >= top_k:
+                break
+        return deduped
 
     def _detect_collection_dimension(self) -> Optional[int]:
         """Inspect the existing collection and return its embedding dimension if known."""
@@ -542,8 +628,7 @@ class RAGEngine:
                     }
                 )
 
-        ranked.sort(key=lambda item: item.get("relevance_score", 0), reverse=True)
-        return ranked[:top_k]
+        return self._dedupe_ranked_results(ranked, top_k)
 
     def _search_chroma_lexical(self, query: str, top_k: int) -> List[Dict]:
         """Search locally stored Chroma documents lexically."""
@@ -571,8 +656,7 @@ class RAGEngine:
                 }
             )
 
-        ranked.sort(key=lambda item: item.get("relevance_score", 0), reverse=True)
-        return ranked[:top_k]
+        return self._dedupe_ranked_results(ranked, top_k)
 
     @staticmethod
     def _merge_ranked_results(primary: List[Dict], secondary: List[Dict], top_k: int) -> List[Dict]:
@@ -580,14 +664,16 @@ class RAGEngine:
         merged = []
         seen = set()
         for item in primary + secondary:
-            key = (item.get("document_id"), item.get("chunk_index"))
+            key = (
+                item.get("document_id"),
+                item.get("chunk_index"),
+                RAGEngine._result_signature(item),
+            )
             if key in seen:
                 continue
             merged.append(item)
             seen.add(key)
-            if len(merged) >= top_k:
-                break
-        return merged
+        return RAGEngine._dedupe_ranked_results(merged, top_k)
 
     def _align_embedding_dimension(
         self,
@@ -842,6 +928,24 @@ Summarize the most reliable answer supported by the snippets above."""
     @staticmethod
     def _clean_snippet(text: str, limit: int = 220) -> str:
         snippet = " ".join((text or "").split())
+        snippet = re.sub(
+            r"source:\s*krmangalam\.edu\.in\s*\|\s*dataset compiled for internal chatbot training purposes",
+            "",
+            snippet,
+            flags=re.IGNORECASE,
+        )
+        snippet = re.sub(
+            r"kr mangalam university\s*[—-]\s*institutional dataset\s*[—-]?\s*\(chatbot training\)",
+            "",
+            snippet,
+            flags=re.IGNORECASE,
+        )
+        snippet = re.sub(r"\bpage\s+\d+\b", "", snippet, flags=re.IGNORECASE)
+        snippet = re.sub(r"\bversion:\s*[\w\-.]+\b", "", snippet, flags=re.IGNORECASE)
+        snippet = re.sub(r"\bcompiled from:\s*krmangalam\.edu\.in\b", "", snippet, flags=re.IGNORECASE)
+        snippet = re.sub(r"\bpurpose:\s*training data for university information chatbot\.?", "", snippet, flags=re.IGNORECASE)
+        snippet = re.sub(r"\s+\|\s+", " | ", snippet)
+        snippet = re.sub(r"\s{2,}", " ", snippet).strip(" |,-")
         if snippet.startswith("# "):
             snippet = snippet.split(" ", 2)[-1]
         if len(snippet) > limit:
