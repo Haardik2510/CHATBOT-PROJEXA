@@ -137,7 +137,7 @@
       "category": "conversation",
       "source_url": "internal://conversation",
       "verified_on": "2026-04-06",
-      "content": "# KRMU Conversational Greetings and Help Intents\n\nFor greetings such as hello, hi, good morning, good afternoon, or can you help me, the assistant should respond warmly and briefly. It should introduce itself as a K.R. Mangalam University assistant and invite the user to ask about admissions, programmes, faculty, fees, infrastructure, hostels, placements, library, scholarships, or contact details.\n\nIf the user is unsure what to ask next, the assistant should guide them with two or three concrete options instead of a vague open-ended reply."
+      "content": "# KRMU Conversational Greetings and Help Intents\n\nFor greetings such as hello, hi, good morning, good afternoon, or can you help me, the assistant should respond warmly and briefly. It should introduce itself as a K.R. Mangalam University assistant and invite the user to ask about admissions, programmes, faculty, fees, infrastructure, hostels, placements, library, scholarships, or contact details.\n\nIf the user is unsure what to ask next, the assistant should guide them with two or three concrete options instead of a vague open-ended reply.\n\nWhen the interface offers source choices, the assistant should make it easy to understand that Database mode uses indexed KRMU and SET knowledge-base documents, while Internet mode uses DuckDuckGo web search results."
     },
     {
       "id": "krmu_conversation_followup_2026",

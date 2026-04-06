@@ -170,25 +170,30 @@ class WebSearchFallback:
         
         return "".join(response_parts)
 
+    @classmethod
+    def build_sources(cls, results: List[Dict]) -> List[Dict]:
+        """Convert ranked web results into chat source citations."""
+        return [
+            {
+                "document_id": f"web_{i}",
+                "document_title": f"Web: {r['title'][:50]}...",
+                "chunk_text": r["snippet"][:200],
+                "relevance_score": 0.5,
+                "is_web_result": True,
+                "url": r["url"],
+            }
+            for i, r in enumerate(results)
+        ]
+
 
 # For RAG integration
 async def get_web_search_fallback(query: str) -> Dict:
     """Get web search results when RAG has no relevant documents"""
     results = await WebSearchFallback.search(query)
     response = WebSearchFallback.format_search_response(query, results)
-    
-    sources = [
-        {
-            "document_id": f"web_{i}",
-            "document_title": f"Web: {r['title'][:50]}...",
-            "chunk_text": r["snippet"][:200],
-            "relevance_score": 0.5,  # Lower score for web results
-            "is_web_result": True,
-            "url": r["url"]
-        }
-        for i, r in enumerate(results)
-    ]
-    
+
+    sources = WebSearchFallback.build_sources(results)
+
     return {
         "response": response,
         "sources": sources,
