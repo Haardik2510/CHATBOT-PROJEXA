@@ -92,6 +92,15 @@ class DocumentChunkPreviewResponse(BaseModel):
     chunks: List[DocumentChunkPreview] = []
 
 
+class DocumentBulkDeleteRequest(BaseModel):
+    document_ids: List[str] = Field(default_factory=list, min_length=1)
+
+
+class DocumentBulkDeleteResponse(BaseModel):
+    deleted_count: int
+    not_found_ids: List[str] = []
+
+
 # Chat Models
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant", "system"]

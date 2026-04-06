@@ -336,12 +336,12 @@ export default function ChatView() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#12151a]">
       {/* Header */}
       <motion.div 
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="p-4 md:p-6 border-b border-[#1e2330]"
+        className="shrink-0 border-b border-[#1e2330] bg-[#12151a] p-4 md:p-6"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -373,8 +373,8 @@ export default function ChatView() {
       </motion.div>
 
       {/* Messages area */}
-      <ScrollArea className="flex-1 min-h-0 p-4 md:p-6">
-        <div className="max-w-3xl mx-auto space-y-4">
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="max-w-3xl mx-auto space-y-4 p-4 md:p-6">
           {messages.length === 0 ? (
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
@@ -674,7 +674,7 @@ export default function ChatView() {
           <p className="text-xs text-[#6b7280] mt-3 text-center">
             {isRecording
               ? "Speak now... Click mic to stop"
-              : "Press Enter to send • Shift+Enter for new line"}
+              : "Press Enter to send | Shift+Enter for new line"}
           </p>
         </div>
       </motion.div>

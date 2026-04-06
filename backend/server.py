@@ -25,6 +25,7 @@ from models import (
     ChatSession, QueryLog, AnalyticsOverview, DailyStats, URLScrapeRequest,
     DocumentChunkPreview, DocumentChunkPreviewResponse,
     RetrievalEvaluationRequest, RetrievalEvaluationResponse,
+    DocumentBulkDeleteRequest, DocumentBulkDeleteResponse,
 )
 from auth import (
     hash_password, verify_password, create_access_token, 
@@ -1487,6 +1488,41 @@ async def delete_document(
     await store.delete_document(document_id)
     
     return {"message": "Document deleted successfully"}
+
+
+@api_router.post("/documents/bulk-delete", response_model=DocumentBulkDeleteResponse)
+async def bulk_delete_documents(
+    payload: DocumentBulkDeleteRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Delete multiple documents at once (admin only)."""
+    current_user = await get_current_user(request, credentials)
+
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can delete documents")
+
+    unique_ids = list(dict.fromkeys(doc_id for doc_id in payload.document_ids if doc_id))
+    if not unique_ids:
+        raise HTTPException(status_code=400, detail="No document IDs were provided")
+
+    deleted_count = 0
+    not_found_ids: List[str] = []
+
+    for document_id in unique_ids:
+        document = await store.get_document(document_id)
+        if not document:
+            not_found_ids.append(document_id)
+            continue
+
+        rag_engine.delete_document(document_id)
+        await store.delete_document(document_id)
+        deleted_count += 1
+
+    return DocumentBulkDeleteResponse(
+        deleted_count=deleted_count,
+        not_found_ids=not_found_ids,
+    )
 
 
 # ==================== Analytics Routes ====================
