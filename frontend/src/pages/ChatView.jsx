@@ -373,8 +373,8 @@ export default function ChatView() {
       </motion.div>
 
       {/* Messages area */}
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="max-w-3xl mx-auto space-y-4 p-4 md:p-6">
+      <ScrollArea type="always" className="flex-1 min-h-0">
+        <div className="max-w-3xl mx-auto space-y-4 p-4 pr-5 md:p-6 md:pr-6">
           {messages.length === 0 ? (
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
