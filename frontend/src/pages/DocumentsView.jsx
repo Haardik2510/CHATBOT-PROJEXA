@@ -7,6 +7,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { ScrollArea } from "../components/ui/scroll-area";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -72,9 +73,11 @@ const statusIcons = {
 export default function DocumentsView() {
   const { isAdmin } = useAuth();
   const [documents, setDocuments] = useState([]);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -132,6 +135,12 @@ export default function DocumentsView() {
       return () => clearInterval(interval);
     }
   }, [documents, fetchDocuments]);
+
+  useEffect(() => {
+    setSelectedDocumentIds((prev) =>
+      prev.filter((id) => documents.some((doc) => doc.id === id))
+    );
+  }, [documents]);
 
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
@@ -223,6 +232,56 @@ export default function DocumentsView() {
     }
   };
 
+  const toggleDocumentSelection = (documentId, checked) => {
+    setSelectedDocumentIds((prev) => {
+      if (checked) {
+        return prev.includes(documentId) ? prev : [...prev, documentId];
+      }
+      return prev.filter((id) => id !== documentId);
+    });
+  };
+
+  const toggleSelectAll = (checked) => {
+    if (!checked) {
+      setSelectedDocumentIds([]);
+      return;
+    }
+    setSelectedDocumentIds(documents.map((doc) => doc.id));
+  };
+
+  const bulkDeleteDocuments = async () => {
+    if (!selectedDocumentIds.length) {
+      toast.error("Select at least one document to delete");
+      return;
+    }
+
+    const selectedCount = selectedDocumentIds.length;
+    if (!window.confirm(`Delete ${selectedCount} selected document${selectedCount > 1 ? "s" : ""}?`)) {
+      return;
+    }
+
+    setIsBulkDeleting(true);
+    try {
+      const response = await axios.post(`${API}/documents/bulk-delete`, {
+        document_ids: selectedDocumentIds,
+      });
+      const deletedCount = response.data?.deleted_count || 0;
+      const missingCount = response.data?.not_found_ids?.length || 0;
+      toast.success(
+        missingCount
+          ? `Deleted ${deletedCount} document${deletedCount === 1 ? "" : "s"}. ${missingCount} no longer existed.`
+          : `Deleted ${deletedCount} document${deletedCount === 1 ? "" : "s"}.`
+      );
+      setSelectedDocumentIds([]);
+      fetchDocuments();
+    } catch (error) {
+      console.error("Bulk delete error:", error);
+      toast.error(error.response?.data?.detail || "Failed to delete selected documents");
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
   const previewDocument = async (documentId) => {
     setPreviewLoading(true);
     setPreviewDialogOpen(true);
@@ -262,6 +321,10 @@ export default function DocumentsView() {
     { label: "Processing", value: documents.filter((d) => d.status === "pending" || d.status === "processing").length, icon: Loader2 },
     { label: "Total Chunks", value: documents.reduce((acc, d) => acc + (d.chunk_count || 0), 0), icon: File },
   ];
+
+  const allSelected = documents.length > 0 && selectedDocumentIds.length === documents.length;
+  const someSelected = selectedDocumentIds.length > 0 && !allSelected;
+  const columnCount = isAdmin ? 8 : 7;
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -516,6 +579,43 @@ export default function DocumentsView() {
         ))}
       </div>
 
+      {isAdmin && selectedDocumentIds.length > 0 ? (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col gap-3 rounded-2xl border border-[#2a3142] bg-[#151922] p-4 md:flex-row md:items-center md:justify-between"
+        >
+          <div className="flex items-center gap-3 text-sm text-[#d1d5db]">
+            <span className="rounded-full bg-[#FFBA00]/10 px-3 py-1 text-[#FFBA00]">
+              {selectedDocumentIds.length} selected
+            </span>
+            <span className="text-[#9ca3af]">Bulk actions apply only to the checked documents.</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedDocumentIds([])}
+              className="text-[#9ca3af] hover:text-white hover:bg-[#1e2330]"
+            >
+              Clear selection
+            </Button>
+            <Button
+              size="sm"
+              onClick={bulkDeleteDocuments}
+              disabled={isBulkDeleting}
+              className="bg-red-500/90 text-white hover:bg-red-500"
+            >
+              {isBulkDeleting ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Deleting...</>
+              ) : (
+                <><Trash2 className="w-4 h-4 mr-2" />Delete selected</>
+              )}
+            </Button>
+          </div>
+        </motion.div>
+      ) : null}
+
       {/* Documents table */}
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
@@ -527,6 +627,16 @@ export default function DocumentsView() {
           <Table>
             <TableHeader>
               <TableRow className="border-[#2a3142] hover:bg-transparent">
+                {isAdmin ? (
+                  <TableHead className="w-12 text-[#9ca3af]">
+                    <Checkbox
+                      checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                      onCheckedChange={(checked) => toggleSelectAll(Boolean(checked))}
+                      aria-label="Select all documents"
+                      className="border-[#4b5563] data-[state=checked]:bg-[#FFBA00] data-[state=checked]:text-[#12151a]"
+                    />
+                  </TableHead>
+                ) : null}
                 <TableHead className="text-[#9ca3af]">Document</TableHead>
                 <TableHead className="text-[#9ca3af]">Type</TableHead>
                 <TableHead className="text-[#9ca3af]">Size</TableHead>
@@ -539,13 +649,13 @@ export default function DocumentsView() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
+                  <TableCell colSpan={columnCount} className="text-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-[#FFBA00]" />
                   </TableCell>
                 </TableRow>
               ) : documents.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-[#6b7280]">
+                  <TableCell colSpan={columnCount} className="text-center py-8 text-[#6b7280]">
                     No documents yet. Upload your first document to get started.
                   </TableCell>
                 </TableRow>
@@ -563,6 +673,16 @@ export default function DocumentsView() {
                         transition={{ delay: i * 0.05 }}
                         className="border-[#2a3142] hover:bg-[#1e2330]/50"
                       >
+                        {isAdmin ? (
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedDocumentIds.includes(doc.id)}
+                              onCheckedChange={(checked) => toggleDocumentSelection(doc.id, Boolean(checked))}
+                              aria-label={`Select ${doc.title}`}
+                              className="border-[#4b5563] data-[state=checked]:bg-[#FFBA00] data-[state=checked]:text-[#12151a]"
+                            />
+                          </TableCell>
+                        ) : null}
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 bg-[#FFBA00]/10 rounded-lg flex items-center justify-center">
