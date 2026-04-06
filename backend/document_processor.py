@@ -17,6 +17,33 @@ class DocumentProcessor:
     CHUNK_SIZE = 1000
     CHUNK_OVERLAP = 200
 
+    @classmethod
+    def _chunk_settings(
+        cls,
+        *,
+        file_size_bytes: int = 0,
+        page_count: int = 0,
+        used_ocr: bool = False,
+        text_length: int = 0,
+    ) -> Tuple[int, int]:
+        """Use larger chunks for very large documents to reduce embedding load."""
+        size_mb = max(file_size_bytes / (1024 * 1024), 0.0)
+
+        chunk_size = cls.CHUNK_SIZE
+        overlap = cls.CHUNK_OVERLAP
+
+        if text_length >= 500_000 or page_count >= 60 or size_mb >= 15:
+            chunk_size = 1600
+            overlap = 240
+        if used_ocr or text_length >= 1_000_000 or page_count >= 120 or size_mb >= 30:
+            chunk_size = 2200
+            overlap = 260
+        if text_length >= 2_000_000 or page_count >= 180 or size_mb >= 45:
+            chunk_size = 2800
+            overlap = 320
+
+        return chunk_size, overlap
+
     @staticmethod
     def _ocr_render_scale(page_count: int, file_size_bytes: int) -> float:
         """Reduce OCR image resolution for very large scanned PDFs to avoid timeouts."""
@@ -200,18 +227,24 @@ class DocumentProcessor:
             
             reader = PdfReader(BytesIO(file_content))
             text_parts = []
+            page_texts = []
             
             for page in reader.pages:
                 page_text = page.extract_text()
                 if page_text:
-                    text_parts.append(page_text)
+                    cleaned_page = cls.clean_text(page_text)
+                    page_texts.append(cleaned_page)
+                    if cleaned_page:
+                        text_parts.append(cleaned_page)
+                else:
+                    page_texts.append("")
             
             extracted_text = cls.clean_text("\n".join(text_parts))
             used_ocr = False
             ocr_engine = None
 
             if not extracted_text.strip() or cls._should_force_ocr(extracted_text, len(reader.pages)):
-                ocr_result = cls.ocr_pdf(file_content)
+                ocr_result = cls.ocr_pdf(file_content, extracted_pages=page_texts)
                 if not ocr_result["success"]:
                     if not extracted_text.strip():
                         return ocr_result
@@ -229,7 +262,13 @@ class DocumentProcessor:
                 full_text = extracted_text
                 quality_metrics = cls._text_quality_metrics(full_text)
 
-            chunks = cls.chunk_text(full_text)
+            chunk_size, overlap = cls._chunk_settings(
+                file_size_bytes=len(file_content),
+                page_count=len(reader.pages),
+                used_ocr=used_ocr,
+                text_length=len(full_text),
+            )
+            chunks = cls.chunk_text(full_text, chunk_size=chunk_size, overlap=overlap)
             
             return {
                 "success": True,
@@ -240,6 +279,7 @@ class DocumentProcessor:
                 "ocr_engine": ocr_engine,
                 "ocr_quality_score": quality_metrics.get("quality_score", 0.0),
                 "extraction_quality": quality_metrics,
+                "chunk_size": chunk_size,
             }
         except ImportError:
             logger.error("PDF support is unavailable because no PDF reader library is installed")
@@ -253,7 +293,7 @@ class DocumentProcessor:
             return {"success": False, "error": str(e), "chunks": []}
 
     @classmethod
-    def ocr_pdf(cls, file_content: bytes) -> Dict:
+    def ocr_pdf(cls, file_content: bytes, extracted_pages: Optional[List[str]] = None) -> Dict:
         """Run OCR on scanned PDFs that do not contain a text layer."""
         tesseract_cmd = cls._resolve_tesseract_command()
         try:
@@ -301,6 +341,21 @@ class DocumentProcessor:
             render_scale = cls._ocr_render_scale(pdf.page_count, len(file_content))
 
             for page_number, page in enumerate(pdf, start=1):
+                extracted_page_text = ""
+                if extracted_pages and len(extracted_pages) >= page_number:
+                    extracted_page_text = cls.clean_text(extracted_pages[page_number - 1] or "")
+
+                extracted_metrics = cls._text_quality_metrics(extracted_page_text)
+                needs_ocr = (
+                    not extracted_page_text
+                    or extracted_metrics["word_count"] < 12
+                    or extracted_metrics["quality_score"] < 0.22
+                )
+
+                if not needs_ocr:
+                    text_parts.append(f"Page {page_number}\n{extracted_page_text}")
+                    continue
+
                 pix = page.get_pixmap(matrix=fitz.Matrix(render_scale, render_scale), alpha=False)
                 image = Image.open(BytesIO(pix.tobytes("png")))
                 image = ImageOps.grayscale(image)
@@ -317,7 +372,13 @@ class DocumentProcessor:
                     text_parts.append(f"Page {page_number}\n{cleaned}")
 
             full_text = cls.clean_text("\n\n".join(text_parts))
-            chunks = cls.chunk_text(full_text)
+            chunk_size, overlap = cls._chunk_settings(
+                file_size_bytes=len(file_content),
+                page_count=pdf.page_count,
+                used_ocr=True,
+                text_length=len(full_text),
+            )
+            chunks = cls.chunk_text(full_text, chunk_size=chunk_size, overlap=overlap)
             quality_metrics = cls._text_quality_metrics(full_text)
 
             if not chunks:
@@ -335,6 +396,7 @@ class DocumentProcessor:
                 "ocr_engine": "tesseract" if ocr_with_tesseract else "rapidocr",
                 "ocr_quality_score": quality_metrics.get("quality_score", 0.0),
                 "extraction_quality": quality_metrics,
+                "chunk_size": chunk_size,
             }
         except Exception as exc:
             logger.error("OCR processing failed: %s", exc)

@@ -76,12 +76,12 @@ logger = logging.getLogger(__name__)
 DOCUMENT_PROCESS_BASE_TIMEOUT_SECONDS = max(300, int(os.environ.get("DOCUMENT_PROCESS_BASE_TIMEOUT_SECONDS", "300")))
 DOCUMENT_PROCESS_MAX_TIMEOUT_SECONDS = max(
     DOCUMENT_PROCESS_BASE_TIMEOUT_SECONDS,
-    int(os.environ.get("DOCUMENT_PROCESS_MAX_TIMEOUT_SECONDS", "1800")),
+    int(os.environ.get("DOCUMENT_PROCESS_MAX_TIMEOUT_SECONDS", "5400")),
 )
 DOCUMENT_INDEX_BASE_TIMEOUT_SECONDS = max(300, int(os.environ.get("DOCUMENT_INDEX_BASE_TIMEOUT_SECONDS", "300")))
 DOCUMENT_INDEX_MAX_TIMEOUT_SECONDS = max(
     DOCUMENT_INDEX_BASE_TIMEOUT_SECONDS,
-    int(os.environ.get("DOCUMENT_INDEX_MAX_TIMEOUT_SECONDS", "1800")),
+    int(os.environ.get("DOCUMENT_INDEX_MAX_TIMEOUT_SECONDS", "5400")),
 )
 
 
@@ -108,7 +108,7 @@ def _resolve_cors_origin_regex(explicit_origins: List[str]) -> Optional[str]:
 def _document_process_timeout_seconds(file_type: str, file_size: int) -> int:
     """Scale extraction timeout with file size, especially for large PDFs."""
     size_mb = max(file_size / (1024 * 1024), 0.0)
-    per_mb = 18 if file_type == "pdf" else 8
+    per_mb = 28 if file_type == "pdf" else 8
     timeout = int(DOCUMENT_PROCESS_BASE_TIMEOUT_SECONDS + (size_mb * per_mb))
     return min(max(timeout, DOCUMENT_PROCESS_BASE_TIMEOUT_SECONDS), DOCUMENT_PROCESS_MAX_TIMEOUT_SECONDS)
 
@@ -118,8 +118,8 @@ def _document_index_timeout_seconds(chunk_count: int, file_size: int) -> int:
     size_mb = max(file_size / (1024 * 1024), 0.0)
     timeout = int(
         DOCUMENT_INDEX_BASE_TIMEOUT_SECONDS
-        + min(chunk_count, 1200) * 1.2
-        + size_mb * 6
+        + min(chunk_count, 1200) * 1.6
+        + size_mb * 12
     )
     return min(max(timeout, DOCUMENT_INDEX_BASE_TIMEOUT_SECONDS), DOCUMENT_INDEX_MAX_TIMEOUT_SECONDS)
 
