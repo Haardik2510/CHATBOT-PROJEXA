@@ -583,6 +583,28 @@ class RAGEngine:
         return min(score, 1.0)
 
     @staticmethod
+    def _ocr_score_adjustment(metadata: Optional[Dict]) -> float:
+        """Adjust retrieval trust when a chunk came from OCR text."""
+        metadata = metadata or {}
+        if not metadata.get("used_ocr"):
+            return 0.0
+
+        try:
+            quality = float(metadata.get("ocr_quality_score", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            quality = 0.0
+
+        if quality >= 0.72:
+            return 0.06
+        if quality >= 0.52:
+            return 0.03
+        if quality <= 0.22:
+            return -0.10
+        if quality <= 0.35:
+            return -0.05
+        return 0.0
+
+    @staticmethod
     def _looks_like_overview_query(query_text: str) -> bool:
         """Detect broad overview-style questions about the university."""
         normalized = (query_text or "").strip().lower()
@@ -705,6 +727,7 @@ class RAGEngine:
             metadata = row.get("metadata") or {}
             title = metadata.get("document_title", "Unknown")
             score = self._score_lexical_match(query, row.get("chunk_text", ""), title)
+            score += self._ocr_score_adjustment(metadata)
             if score <= 0:
                 continue
             ranked.append(
@@ -713,7 +736,8 @@ class RAGEngine:
                     "document_id": row.get("document_id", ""),
                     "document_title": title,
                     "chunk_index": row.get("chunk_index", 0),
-                    "relevance_score": score,
+                    "relevance_score": min(score, 1.0),
+                    "metadata": metadata,
                 }
             )
 
@@ -724,6 +748,7 @@ class RAGEngine:
                 metadata = row.get("metadata") or {}
                 title = metadata.get("document_title", "Unknown")
                 score = self._score_lexical_match(query, row.get("chunk_text", ""), title)
+                score += self._ocr_score_adjustment(metadata)
                 if score <= 0:
                     continue
                 ranked.append(
@@ -732,7 +757,8 @@ class RAGEngine:
                         "document_id": row.get("document_id", ""),
                         "document_title": title,
                         "chunk_index": row.get("chunk_index", 0),
-                        "relevance_score": score,
+                        "relevance_score": min(score, 1.0),
+                        "metadata": metadata,
                     }
                 )
 
@@ -752,6 +778,7 @@ class RAGEngine:
             metadata = meta or {}
             title = metadata.get("document_title", "Unknown")
             score = self._score_lexical_match(query, doc or "", title)
+            score += self._ocr_score_adjustment(metadata)
             if score <= 0:
                 continue
             ranked.append(
@@ -760,7 +787,8 @@ class RAGEngine:
                     "document_id": metadata.get("document_id", ""),
                     "document_title": title,
                     "chunk_index": metadata.get("chunk_index", 0),
-                    "relevance_score": score,
+                    "relevance_score": min(score, 1.0),
+                    "metadata": metadata,
                 }
             )
 
@@ -872,13 +900,16 @@ class RAGEngine:
         retrieved = []
         for row in response.data or []:
             metadata = row.get("metadata") or {}
+            similarity = float(row.get("similarity", 0) or 0)
+            similarity = min(1.0, max(0.0, similarity + self._ocr_score_adjustment(metadata)))
             retrieved.append(
                 {
                     "content": row.get("chunk_text", ""),
                     "document_id": row.get("document_id", ""),
                     "document_title": metadata.get("document_title", "Unknown"),
                     "chunk_index": row.get("chunk_index", 0),
-                    "relevance_score": row.get("similarity", 0),
+                    "relevance_score": similarity,
+                    "metadata": metadata,
                 }
             )
 
@@ -1433,10 +1464,25 @@ Summarize the most reliable answer supported by the snippets above."""
             "results": results,
         }
 
-    @staticmethod
-    def _filter_relevant_docs(retrieved_docs: List[Dict], min_score: float = 0.45) -> List[Dict]:
+    @classmethod
+    def _filter_relevant_docs(cls, retrieved_docs: List[Dict], min_score: float = 0.45) -> List[Dict]:
         """Keep only sufficiently relevant chunks for answer generation."""
-        filtered_docs = [doc for doc in retrieved_docs if doc.get("relevance_score", 0) >= min_score]
+        filtered_docs = []
+        for doc in retrieved_docs:
+            threshold = min_score
+            metadata = doc.get("metadata") or {}
+            if metadata.get("used_ocr"):
+                try:
+                    ocr_quality = float(metadata.get("ocr_quality_score", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    ocr_quality = 0.0
+                if ocr_quality >= 0.55:
+                    threshold = 0.40
+                elif ocr_quality <= 0.25:
+                    threshold = 0.50
+
+            if doc.get("relevance_score", 0) >= threshold:
+                filtered_docs.append(doc)
         return filtered_docs or retrieved_docs[:1]
 
     def generate_response(

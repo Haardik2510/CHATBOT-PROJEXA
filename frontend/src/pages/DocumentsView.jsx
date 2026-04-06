@@ -262,11 +262,35 @@ export default function DocumentsView() {
 
     setIsBulkDeleting(true);
     try {
-      const response = await axios.post(`${API}/documents/bulk-delete`, {
-        document_ids: selectedDocumentIds,
-      });
-      const deletedCount = response.data?.deleted_count || 0;
-      const missingCount = response.data?.not_found_ids?.length || 0;
+      let deletedCount = 0;
+      let missingCount = 0;
+
+      try {
+        const response = await axios.post(`${API}/documents/bulk-delete`, {
+          document_ids: selectedDocumentIds,
+        });
+        deletedCount = response.data?.deleted_count || 0;
+        missingCount = response.data?.not_found_ids?.length || 0;
+      } catch (bulkError) {
+        const status = bulkError?.response?.status;
+        const detail = String(bulkError?.response?.data?.detail || "").toLowerCase();
+        const shouldFallback =
+          status === 404 ||
+          status === 405 ||
+          detail.includes("method not allowed") ||
+          detail.includes("action not allowed");
+
+        if (!shouldFallback) {
+          throw bulkError;
+        }
+
+        const results = await Promise.allSettled(
+          selectedDocumentIds.map((documentId) => axios.delete(`${API}/documents/${documentId}`))
+        );
+        deletedCount = results.filter((result) => result.status === "fulfilled").length;
+        missingCount = results.filter((result) => result.status === "rejected").length;
+      }
+
       toast.success(
         missingCount
           ? `Deleted ${deletedCount} document${deletedCount === 1 ? "" : "s"}. ${missingCount} no longer existed.`
