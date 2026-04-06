@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import axios from "axios";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
+import { Textarea } from "../components/ui/textarea";
+import { ScrollArea } from "../components/ui/scroll-area";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +28,7 @@ import {
   Loader2,
   BookOpen,
   GraduationCap,
+  Search,
 } from "lucide-react";
 
 import { API } from "../lib/api";
@@ -36,6 +39,9 @@ export default function KnowledgeBaseSettings() {
   const [isSeeding, setIsSeeding] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [evaluationQuery, setEvaluationQuery] = useState("");
+  const [evaluationResult, setEvaluationResult] = useState(null);
+  const [isEvaluating, setIsEvaluating] = useState(false);
 
   const fetchStatus = async () => {
     try {
@@ -98,6 +104,26 @@ export default function KnowledgeBaseSettings() {
       toast.error("Failed to refresh model connection");
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  const runRetrievalCheck = async () => {
+    if (!evaluationQuery.trim()) {
+      toast.error("Enter a question to inspect retrieval");
+      return;
+    }
+
+    setIsEvaluating(true);
+    try {
+      const response = await axios.post(`${API}/admin/retrieval-evaluate`, {
+        query: evaluationQuery.trim(),
+        top_k: 5,
+      });
+      setEvaluationResult(response.data);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to inspect retrieval");
+    } finally {
+      setIsEvaluating(false);
     }
   };
 
@@ -177,6 +203,10 @@ export default function KnowledgeBaseSettings() {
             <p>
               <span className="text-[#6b7280]">Chat Model:</span>{" "}
               {status?.rag_stats?.chat_model || "N/A"}
+            </p>
+            <p>
+              <span className="text-[#6b7280]">Embedding Provider:</span>{" "}
+              {status?.rag_stats?.embedding_provider || "N/A"}
             </p>
             <p>
               <span className="text-[#6b7280]">Embedding Model:</span>{" "}
@@ -318,6 +348,74 @@ export default function KnowledgeBaseSettings() {
             </AlertDialog>
           )}
         </div>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35 }}
+        className="card-surface p-5"
+      >
+        <h3 className="font-heading font-semibold text-white mb-3 flex items-center gap-2">
+          <Search className="w-5 h-5 text-[#FFBA00]" />
+          Retrieval Check
+        </h3>
+        <p className="text-sm text-[#6b7280] mb-4">
+          Test a database-mode question and inspect which chunks the retriever is selecting before answer generation.
+        </p>
+        <div className="space-y-3">
+          <Textarea
+            value={evaluationQuery}
+            onChange={(e) => setEvaluationQuery(e.target.value)}
+            placeholder="Example: Tell me about K.R. Mangalam University"
+            className="input-field min-h-[96px]"
+          />
+          <Button
+            onClick={runRetrievalCheck}
+            disabled={isEvaluating}
+            className="btn-primary"
+          >
+            {isEvaluating ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Checking...</>
+            ) : (
+              <><Search className="w-4 h-4 mr-2" />Inspect Retrieval</>
+            )}
+          </Button>
+        </div>
+
+        {evaluationResult ? (
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge variant="outline" className="bg-[#1e2330] border-[#2a3142] text-[#9ca3af]">
+                backend: {evaluationResult.vector_backend}
+              </Badge>
+              <Badge variant="outline" className="bg-[#1e2330] border-[#2a3142] text-[#9ca3af]">
+                embeddings: {evaluationResult.embedding_provider}
+              </Badge>
+              <Badge variant="outline" className="bg-[#1e2330] border-[#2a3142] text-[#9ca3af]">
+                model: {evaluationResult.embedding_model}
+              </Badge>
+            </div>
+            <ScrollArea className="h-[260px] pr-4">
+              <div className="space-y-3">
+                {evaluationResult.results?.length ? evaluationResult.results.map((item) => (
+                  <div key={`${item.metadata?.document_id || "doc"}-${item.chunk_index}`} className="rounded-xl border border-[#2a3142] bg-[#12151a] p-4">
+                    <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
+                      <Badge variant="outline" className="bg-[#FFBA00]/10 border-[#FFBA00]/30 text-[#FFBA00]">
+                        score {Number(item.relevance_score || 0).toFixed(3)}
+                      </Badge>
+                      <span className="text-[#9ca3af]">{item.metadata?.document_title || "Unknown source"}</span>
+                      <span className="text-[#6b7280]">chunk {item.chunk_index}</span>
+                    </div>
+                    <p className="text-sm text-[#d1d5db] leading-6 whitespace-pre-wrap">{item.chunk_text}</p>
+                  </div>
+                )) : (
+                  <p className="text-sm text-[#6b7280]">No chunks were retrieved for that question.</p>
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        ) : null}
       </motion.div>
 
       {/* Model Setup Instructions */}

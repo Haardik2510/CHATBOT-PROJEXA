@@ -77,6 +77,21 @@ class DocumentResponse(BaseModel):
     error_message: Optional[str] = None
 
 
+class DocumentChunkPreview(BaseModel):
+    chunk_index: int
+    chunk_text: str
+    relevance_score: Optional[float] = None
+    metadata: dict = {}
+
+
+class DocumentChunkPreviewResponse(BaseModel):
+    document_id: str
+    title: str
+    status: str
+    chunk_count: int
+    chunks: List[DocumentChunkPreview] = []
+
+
 # Chat Models
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant", "system"]
@@ -104,6 +119,20 @@ class ChatResponse(BaseModel):
     session_id: str
     voice_output: bool = False
     answer_mode: Literal["database", "internet"] = "database"
+
+
+class RetrievalEvaluationRequest(BaseModel):
+    query: str
+    top_k: int = Field(default=5, ge=1, le=10)
+
+
+class RetrievalEvaluationResponse(BaseModel):
+    query: str
+    vector_backend: str
+    embedding_provider: str
+    embedding_model: str
+    chunk_count: int
+    results: List[DocumentChunkPreview] = []
 
 
 class ChatSession(BaseModel):
