@@ -70,6 +70,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _parse_cors_origins(raw_value: str) -> List[str]:
+    """Parse comma-separated CORS origins while ignoring blanks."""
+    return [origin.strip().rstrip("/") for origin in (raw_value or "").split(",") if origin.strip()]
+
+
+def _resolve_cors_origin_regex(explicit_origins: List[str]) -> Optional[str]:
+    """
+    Allow stable localhost origins and Vercel-hosted frontends without needing
+    an exact env update for every new preview/custom deployment.
+    """
+    configured_regex = os.environ.get("CORS_ORIGIN_REGEX", "").strip()
+    if configured_regex:
+        return configured_regex
+
+    if any(origin.endswith(".vercel.app") for origin in explicit_origins):
+        return r"^https://([a-zA-Z0-9-]+\.)*vercel\.app$"
+
+    return None
+
 # ==================== Helper Functions ====================
 
 async def get_current_user_from_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Optional[dict]:
@@ -1619,10 +1639,14 @@ async def refresh_ollama_connection(
 # Include the router in the main app
 app.include_router(api_router)
 
+_cors_origins = _parse_cors_origins(os.environ.get("CORS_ORIGINS", ""))
+_cors_origin_regex = _resolve_cors_origin_regex(_cors_origins)
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=_cors_origins or ["http://localhost:3000"],
+    allow_origin_regex=_cors_origin_regex,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -1654,6 +1678,8 @@ async def startup_event():
 
     if has_supabase_config():
         logger.info("Supabase configured for project: %s", SUPABASE_URL)
+    logger.info("CORS origins: %s", _cors_origins or ["http://localhost:3000"])
+    logger.info("CORS origin regex: %s", _cors_origin_regex or "disabled")
 
     # Log model provider status
     rag_stats = rag_engine.get_stats()
