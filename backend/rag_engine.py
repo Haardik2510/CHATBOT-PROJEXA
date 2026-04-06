@@ -983,10 +983,11 @@ Write the best grounded answer you can using only the context above. Keep it fac
                 history_parts.append(f"{role.title()}: {content}")
         conversation_context = "\n".join(history_parts)
 
-        system_prompt = """You are a careful web-assisted university assistant.
+        system_prompt = """You are a careful web-assisted K.R. Mangalam University assistant.
 
 Rules:
 - Use ONLY the provided DuckDuckGo search snippets and recent conversation history
+- Treat the snippets as official K.R. Mangalam University webpages only
 - Do not claim facts that are not supported by the snippets
 - If snippets are incomplete or conflicting, say that clearly
 - Keep the answer concise and useful

@@ -13,16 +13,15 @@ class WebSearchFallback:
     """Simple web search fallback using DuckDuckGo HTML"""
     
     SEARCH_URL = "https://html.duckduckgo.com/html/"
-    PREFERRED_DOMAINS = {
+    OFFICIAL_DOMAIN_SUFFIX = "krmangalam.edu.in"
+    OFFICIAL_SEARCH_HOSTS = (
         "krmangalam.edu.in",
-        "krmangalamuniversity.edu.in",
-        "ugc.gov.in",
-        "aicte-india.org",
-        "nirfindia.org",
-        "swayam.gov.in",
-        "coursera.org",
-        "edx.org",
-    }
+        "www.krmangalam.edu.in",
+        "admissions.krmangalam.edu.in",
+        "opac.krmangalam.edu.in",
+        "library.krmangalam.edu.in",
+        "lms.krmangalam.edu.in",
+    )
 
     @classmethod
     def _extract_domain(cls, url: str) -> str:
@@ -30,6 +29,20 @@ class WebSearchFallback:
             return urlparse(url).netloc.lower().removeprefix("www.")
         except Exception:
             return ""
+
+    @classmethod
+    def _is_official_domain(cls, domain: str) -> bool:
+        if not domain:
+            return False
+        return domain == cls.OFFICIAL_DOMAIN_SUFFIX or domain.endswith(f".{cls.OFFICIAL_DOMAIN_SUFFIX}")
+
+    @classmethod
+    def _build_site_restricted_query(cls, query: str) -> str:
+        site_filters = " OR ".join(f"site:{host}" for host in cls.OFFICIAL_SEARCH_HOSTS)
+        clean_query = (query or "").strip()
+        if not clean_query:
+            return site_filters
+        return f"{clean_query} ({site_filters})"
 
     @classmethod
     def _term_overlap_score(cls, query: str, text: str) -> float:
@@ -46,16 +59,14 @@ class WebSearchFallback:
         url = result.get("url", "")
         domain = cls._extract_domain(url)
 
+        if not cls._is_official_domain(domain):
+            return 0.0
+
         score = 0.0
         overlap = cls._term_overlap_score(query, f"{title} {snippet}")
         score += overlap * 4
 
-        if domain in cls.PREFERRED_DOMAINS:
-            score += 5
-        elif domain.endswith(".edu") or domain.endswith(".edu.in"):
-            score += 3
-        elif domain.endswith(".gov.in") or domain.endswith(".gov"):
-            score += 3
+        score += 5
 
         if url.startswith("https://"):
             score += 0.5
@@ -80,6 +91,9 @@ class WebSearchFallback:
             if not url or url in seen_urls:
                 continue
 
+            if not cls._is_official_domain(cls._extract_domain(url)):
+                continue
+
             score = cls._score_result(query, result)
             if score < 1.5:
                 continue
@@ -95,10 +109,11 @@ class WebSearchFallback:
     async def search(cls, query: str, num_results: int = 3) -> List[Dict]:
         """Search the web for relevant information"""
         try:
+            search_query = cls._build_site_restricted_query(query)
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.post(
                     cls.SEARCH_URL,
-                    data={"q": query},
+                    data={"q": search_query},
                     headers={
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                     }
@@ -148,12 +163,12 @@ class WebSearchFallback:
         """Format web search results into a readable response"""
         if not results:
             return (
-                "I couldn't find relevant information in the knowledge base or through web search. "
-                "Please try rephrasing your question or contact the SET administration for assistance."
+                "I couldn't find a strong match in the uploaded KRMU knowledge base or the official K.R. Mangalam University websites. "
+                "Please try rephrasing your question, ask a narrower KRMU-specific question, or check the relevant official page directly."
             )
         
         response_parts = [
-            "I couldn't find a strong answer in the uploaded SET documents, so I checked reliable web sources.\n"
+            "I couldn't find a strong answer in the uploaded KRMU documents, so I checked official K.R. Mangalam University webpages.\n"
         ]
         
         for i, result in enumerate(results, 1):
@@ -164,8 +179,8 @@ class WebSearchFallback:
             )
         
         response_parts.append(
-            "\n*Note: These results are filtered web sources, not uploaded SET documents. "
-            "Please confirm important details from the official university source before relying on them.*"
+            "\n*Note: These results are limited to official K.R. Mangalam University websites, not uploaded database documents. "
+            "Please confirm important details from the linked official page before relying on them.*"
         )
         
         return "".join(response_parts)
