@@ -1,22 +1,22 @@
 {
   "dataset_name": "krmu_official_knowledge",
-  "verified_on": "2026-04-05",
-  "description": "Curated K.R. Mangalam University knowledge base built from official public webpages and paraphrased for internal search and answer retrieval.",
+  "verified_on": "2026-04-06",
+  "description": "Curated K.R. Mangalam University knowledge base built strictly from official public KRMU webpages and official KRMU subdomains, paraphrased for internal search and answer retrieval.",
   "documents": [
     {
       "id": "krmu_about_2026",
       "title": "K.R. Mangalam University Basic Overview",
       "category": "overview",
       "source_url": "https://www.krmangalam.edu.in/about-us/",
-      "verified_on": "2026-04-05",
-      "content": "# K.R. Mangalam University Basic Overview\n\nK.R. Mangalam University, also called KRMU, is located on Sohna Road in Gurugram, Haryana 122103. The university presents itself as a multidisciplinary private university established in 2013. The official site highlights academic breadth, industry exposure, research orientation, campus life, and admissions support as core parts of the KRMU experience.\n\nOn the official about page, KRMU highlights 11 schools and more than 700 faculty members. Across its public pages, the university also promotes more than 100 programmes, strong placement support, and a learning environment built around practical education, innovation, and career readiness.\n\nFor general identity, location, and institutional background, the about page should be treated as the primary public source."
+      "verified_on": "2026-04-06",
+      "content": "# K.R. Mangalam University Basic Overview\n\nK.R. Mangalam University, also called KRMU, is located on Sohna Road in Gurugram, Haryana 122103. The university presents itself as a multidisciplinary private university established in 2013. The official site highlights academic breadth, industry exposure, research orientation, campus life, and admissions support as core parts of the KRMU experience.\n\nOn the official about and overview pages, KRMU highlights 12 schools, 700+ faculty members, and 100+ programmes. Across its public pages, the university promotes practical education, innovation, career readiness, and a student experience that combines academics with campus facilities and industry exposure.\n\nFor general identity, location, and institutional background, the about and overview pages should be treated as the primary public sources."
     },
     {
       "id": "krmu_schools_2026",
       "title": "KRMU Schools and Academic Units",
       "category": "academics",
       "source_url": "https://www.krmangalam.edu.in/about-us/",
-      "verified_on": "2026-04-05",
+      "verified_on": "2026-04-06",
       "content": "# KRMU Schools and Academic Units\n\nThe official KRMU website lists major academic units including the School of Engineering and Technology, School of Management and Commerce, School of Legal Studies, School of Medical and Allied Sciences, School of Physiotherapy and Rehabilitation Sciences, School of Liberal Arts, School of Architecture and Design, School of Basic and Applied Sciences, School of Emerging Media and Creator Economy, School of Hotel Management and Catering Technology, School of Education, School of Agricultural Sciences, and Zenith School of AI.\n\nThe named schools and units on the official site are the safest reference for school-level questions, because the site navigation and about content are updated more frequently than static brochures."
     },
     {
@@ -55,8 +55,8 @@
       "id": "krmu_fee_policy_2026",
       "title": "KRMU Fee Structure and Fee Policy Notes",
       "category": "fees",
-      "source_url": "https://www.krmangalam.edu.in/fee-structure",
-      "verified_on": "2026-04-05",
+      "source_url": "https://www.krmangalam.edu.in/admission/fee-structure",
+      "verified_on": "2026-04-06",
       "content": "# KRMU Fee Structure and Fee Policy Notes\n\nThe official fee structure page covers programme fees school-wise and includes categories such as Engineering and Technology, Management and Commerce, Basic and Applied Sciences, Medical and Allied Sciences, Physiotherapy and Rehabilitation Sciences, Architecture and Design, Legal Studies, Emerging Media and Creator Economy, Liberal Arts, Education, Hotel Management and Catering Technology, Agricultural Sciences, and Ph.D. programmes.\n\nThe fee page also states that fees payable in subsequent years may increase by up to 10 percent per annum, subject to approval by the competent authority. Students should always verify the current programme row for exact fee values."
     },
     {
@@ -64,8 +64,8 @@
       "title": "KRMU Placements Overview and Recruitment Flow",
       "category": "placements",
       "source_url": "https://www.krmangalam.edu.in/the-placements-process",
-      "verified_on": "2026-04-05",
-      "content": "# KRMU Placements Overview and Recruitment Flow\n\nThe official placements-related pages present KRMU as a strong recruiter-facing campus with broad industry participation. Public placement information highlights large recruiter participation, placement assistance, internships, skill development, and industry-linked preparation.\n\nThe placement process page explains that students are notified about recruitment schedules, attend pre-placement talks, and then move through the employer's screening stages. The university indicates that students are expected to participate fully in the recruitment process once registered unless eliminated by the recruiter.\n\nFor questions about recruiter visits, the placement process, and campus placement expectations, the placements section should be treated as the primary public source."
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Placements Overview and Recruitment Flow\n\nThe official placements-related pages present KRMU as a strong recruiter-facing campus with broad industry participation. Public placement information highlights recruiter participation, placement assistance, internships, skill development, and industry-linked preparation.\n\nThe placement process page explains that students are notified about recruiter schedules, apply through the Career Development Center, attend pre-placement talks, and then move through the employer's screening stages. The university indicates that students are expected to participate fully in the recruitment process once registered unless eliminated by the recruiter.\n\nFor questions about recruiter visits, the placement process, and campus placement expectations, the placements section should be treated as the primary public source."
     },
     {
       "id": "krmu_research_2026",
@@ -112,24 +112,128 @@
       "title": "KRMU Hostels Facilities Fees and Contacts",
       "category": "hostel",
       "source_url": "https://www.krmangalam.edu.in/hostel",
-      "verified_on": "2026-04-05",
-      "content": "# KRMU Hostels Facilities Fees and Contacts\n\nThe hostel page states that KRMU provides separate hostels for female and male students and identifies them publicly as Gayatri Hostel and Vivekanand Hostel. The page highlights furnished shared accommodation, campus convenience, security systems, recreation and sports support, gym access, and free high-speed Wi-Fi.\n\nThe same public page also lists hostel fee and security deposit information and provides official hostel contact numbers for the Chief Warden, Boys Warden, and Girls Warden. Hostel charges and policies should always be confirmed from the live hostel page."
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Hostels Facilities Fees and Contacts\n\nThe hostel page states that KRMU provides separate hostels for female and male students and identifies them publicly as Gayatri Hostel and Vivekanand Hostel. The page highlights furnished shared accommodation, campus convenience, security systems, recreation and sports support, gym access, and free high-speed Wi-Fi.\n\nThe same public page lists hostel fee and security deposit information and provides official hostel contact points for the Chief Warden, Boys Warden, and Girls Warden. Hostel charges, room allocation, and policy details should always be confirmed from the live hostel page."
     },
     {
       "id": "krmu_library_digital_2026",
       "title": "KRMU Library Catalog and Digital Learning Platforms",
       "category": "library",
       "source_url": "https://opac.krmangalam.edu.in/",
-      "verified_on": "2026-04-05",
-      "content": "# KRMU Library Catalog and Digital Learning Platforms\n\nKRMU's official digital ecosystem includes a public Central Library catalog hosted on the university OPAC platform. The OPAC identifies itself as the Central Library, K.R. Mangalam University, Sohna Road, Gurugram, Haryana 122103, and lists the library email as library@krmangalam.edu.in.\n\nThe official university site also links major digital academic systems such as LMS and ERP. For library access, catalog discovery, and core digital learning systems, the OPAC, LMS, and ERP references should be treated as the main public sources."
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Library Catalog and Digital Learning Platforms\n\nKRMU's official digital ecosystem includes a public Central Library catalog hosted on the university OPAC platform. The OPAC identifies itself as the Central Library, K.R. Mangalam University, Sohna Road, Gurugram, Haryana 122103, and lists the library email as library@krmangalam.edu.in.\n\nThe official university site also links major digital academic systems such as LMS and ERP, while the library pages surface digital access, renewal workflows, and library help sections. For library access, catalog discovery, and core digital learning systems, the OPAC, LMS, and library references should be treated as the main public sources."
     },
     {
       "id": "krmu_contact_2026",
       "title": "KRMU Contact Details and Main Admission Support",
       "category": "contact",
       "source_url": "https://www.krmangalam.edu.in/contact-us",
-      "verified_on": "2026-04-05",
+      "verified_on": "2026-04-06",
       "content": "# KRMU Contact Details and Main Admission Support\n\nThe official contact page lists the main university address as Sohna Road, Gurugram, Haryana 122103. For general and admissions-related queries, the page provides the main support numbers and the official admissions email address admissions@krmangalam.edu.in.\n\nThe same page also lists regional outreach contacts and promotes campus visits and virtual tours. For enquiries about visiting, admissions help, or regional office support, the contact page should be treated as the primary public reference."
+    },
+    {
+      "id": "krmu_campus_facilities_2026",
+      "title": "KRMU Campus Facilities and Physical Infrastructure",
+      "category": "facilities",
+      "source_url": "https://www.krmangalam.edu.in/krmu-campus-facilities",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Campus Facilities and Physical Infrastructure\n\nThe official KRMU campus facilities page presents the Gurugram campus as a large state-of-the-art learning environment designed for academics, residential life, and student support. The page highlights academic blocks, advanced laboratories, collaborative learning spaces, library access, hostels, incubation support, a career development centre, and conference rooms.\n\nThe same page also positions the campus as a balanced environment for learning, innovation, recreation, and community life. For broad questions about the physical campus and core facilities, the official campus facilities page should be treated as the primary source."
+    },
+    {
+      "id": "krmu_labs_classrooms_security_2026",
+      "title": "KRMU Labs, Smart Classrooms, and Campus Safety",
+      "category": "facilities",
+      "source_url": "https://www.krmangalam.edu.in/krmu-campus-facilities",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Labs, Smart Classrooms, and Campus Safety\n\nThe official campus facilities page says KRMU provides more than 100 programme-specific labs and workshops across disciplines. It describes these spaces as hands-on environments intended for experiential learning, practical exposure, and discipline-specific training.\n\nThe same page says classrooms include ergonomic seating, smart teaching technology, interactive boards or projectors, and high-speed Wi-Fi. For campus safety, the page mentions 24×7 CCTV surveillance, trained security personnel, ID-based access measures, GPS-enabled buses, and defined emergency response and evacuation plans."
+    },
+    {
+      "id": "krmu_transport_sports_2026",
+      "title": "KRMU Transport, Sports, Fitness, and Hostel Life",
+      "category": "student_life",
+      "source_url": "https://www.krmangalam.edu.in/krmu-campus-facilities",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Transport, Sports, Fitness, and Hostel Life\n\nThe official campus facilities page says KRMU runs GPS-enabled, air-conditioned buses across the Delhi-NCR region to support daily commuting. The same public page also highlights separate hostel accommodation, high-speed Wi-Fi, gym access, indoor games, and student community activities inside the residential environment.\n\nFor sports and fitness, the page mentions grounds for cricket and football, courts for basketball, tennis, and badminton, certified coaching support, a modern gym, and indoor games. For general questions about commuting, hostels, and sports culture, the campus facilities and hostel pages should be treated as the main public references."
+    },
+    {
+      "id": "krmu_library_services_2026",
+      "title": "KRMU Library Services, Access, and Digital Support",
+      "category": "library",
+      "source_url": "https://www.krmangalam.edu.in/library",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Library Services, Access, and Digital Support\n\nThe official library page presents KRMU library services as a blend of physical and digital access. The page structure lists membership, issue of books, late fine, missing or lost book handling, book renewal, reservation or recall, reading room discipline, digital library access, complaint and suggestion support, book recommendation, and feedback.\n\nThe same page also promotes digital access features and shows book renewal options using a roll number or employee ID login flow. For library policy, circulation support, and digital library guidance, the official library page should be treated as the primary public source."
+    },
+    {
+      "id": "krmu_placements_highlights_2026",
+      "title": "KRMU Placement Highlights, Recruiters, and Process",
+      "category": "placements",
+      "source_url": "https://www.krmangalam.edu.in/placements",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Placement Highlights, Recruiters, and Process\n\nThe official placements pages highlight 800+ campus recruiters, a highest package of 56.6 LPA, and 100 percent placement assistance. The placements content also presents a structured recruitment flow that includes stages such as pre-placement talks, written tests, interviews, and group discussions.\n\nThe same section explains that students who register for a company are expected to participate on the day of the visit and follow the placement process rules. For recruiter participation, placement assistance, and the recruitment process, the official placements and recruiters pages should be treated as the main public references."
+    },
+    {
+      "id": "krmu_scholarship_policy_2026",
+      "title": "KRMU Scholarship Intake Rules and Continuation Conditions",
+      "category": "scholarship",
+      "source_url": "https://www.krmangalam.edu.in/admission/scholarship",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Scholarship Intake Rules and Continuation Conditions\n\nThe official scholarship page for the 2026 intake presents scholarships on a first-come-first-served basis for the first 100 students and shows mark-based slabs for eligible undergraduate applicants. The page publicly shows a 100 percent scholarship band for 90 percent and above, a 35 percent band for 85 percent to less than 90 percent, and a 25 percent band for 80 percent to less than 85 percent under the marks-based section.\n\nThe same page also lists continuation rules for later instalments. Those public conditions include maintaining at least 75 percent attendance, clearing all subjects offered in the immediately preceding semester, and having no misconduct, indiscipline, or unfair means case. Students should still verify the live scholarship page for programme-specific eligibility and the latest intake rules."
+    },
+    {
+      "id": "krmu_virtual_tour_campus_visit_2026",
+      "title": "KRMU Campus Visit and Virtual Tour Guidance",
+      "category": "campus_visit",
+      "source_url": "https://www.krmangalam.edu.in/campus-tour",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Campus Visit and Virtual Tour Guidance\n\nThe official campus tour pages invite prospective students and families to schedule an exclusive campus tour and also provide an immersive 360-degree virtual tour option. The public messaging frames the campus visit as a way to explore facilities, understand the environment, and experience the university’s academic and student-life atmosphere.\n\nFor users asking how to see the campus before admission, the official campus tour and virtual tour pages should be treated as the primary public references."
+    },
+    {
+      "id": "krmu_research_support_2026",
+      "title": "KRMU Research Support and Central Instrumentation Facility",
+      "category": "research",
+      "source_url": "https://www.krmangalam.edu.in/krmu-campus-facilities",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Research Support and Central Instrumentation Facility\n\nThe official campus facilities page says KRMU has 100+ specialised research labs built to support interdisciplinary innovation. The same page highlights a Central Instrumentation Facility with advanced instruments such as HPLC and UV-VIS spectrophotometers.\n\nFor questions about research infrastructure, instrumentation access, or university-level research support, the campus facilities page should be treated as a primary public source."
+    },
+    {
+      "id": "krmu_cafeteria_spaces_2026",
+      "title": "KRMU Cafeterias and Student Community Spaces",
+      "category": "student_life",
+      "source_url": "https://www.krmangalam.edu.in/krmu-campus-facilities",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Cafeterias and Student Community Spaces\n\nThe official campus facilities page says KRMU features vibrant cafeterias designed for comfort and community. The same page describes 2 spacious cafes in every block, affordable and hygienic meals, and a setting built for social interaction, short breaks, and informal student time between classes.\n\nFor questions about food spaces, casual student gathering areas, and day-to-day campus life outside classrooms, the campus facilities page should be treated as the primary public reference."
+    },
+    {
+      "id": "krmu_transport_connectivity_2026",
+      "title": "KRMU Daily Transport and Delhi NCR Connectivity",
+      "category": "transport",
+      "source_url": "https://www.krmangalam.edu.in/krmu-campus-facilities",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Daily Transport and Delhi NCR Connectivity\n\nThe official campus facilities page says KRMU operates GPS-enabled, air-conditioned buses with comfortable seating and experienced drivers. The same page presents this transport service as a daily commute option across the Delhi-NCR region.\n\nFor questions about university transport, commuting convenience, and daily connectivity to campus, the campus facilities page should be treated as the primary public source."
+    },
+    {
+      "id": "krmu_hostel_rooms_security_2026",
+      "title": "KRMU Hostel Rooms, Security, and Student Living Support",
+      "category": "hostel",
+      "source_url": "https://www.krmangalam.edu.in/hostel/",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Hostel Rooms, Security, and Student Living Support\n\nThe official hostel page says each hostel set is typically designed to accommodate four students with single beds, desks, chairs, storage space, and shared amenity facilities. The same page highlights on-campus convenience, free high-speed Wi-Fi, sports and recreation support, and gym access.\n\nFor safety, the hostel page mentions biometric measures, surveillance cameras, and a 24x7 security team. For room setup, residential safety, and everyday hostel life, the hostel page should be treated as the primary public source."
+    },
+    {
+      "id": "krmu_placement_policy_2026",
+      "title": "KRMU Placement Policy and Career Development Center Support",
+      "category": "placements",
+      "source_url": "https://www.krmangalam.edu.in/placement/overview",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Placement Policy and Career Development Center Support\n\nThe official placements overview page says the Career Development Center supports students with placement activity, counselling, training programmes, and recruiter engagement. The same page states that students interested in campus placements should register with the Center when they reach the final year of their programme, and it notes that the placement process normally begins in September.\n\nFor questions about placement registration, training support, and the role of the Career Development Center, the placements overview page should be treated as the primary public reference."
+    },
+    {
+      "id": "krmu_recruiters_profile_2026",
+      "title": "KRMU Prominent Recruiters and Employer Presence",
+      "category": "placements",
+      "source_url": "https://krmangalam.edu.in/placement/our-recruiter/",
+      "verified_on": "2026-04-06",
+      "content": "# KRMU Prominent Recruiters and Employer Presence\n\nThe official prominent recruiters page says KRMU sees employer participation from sectors such as IT, finance, consulting, education, media, healthcare, and legal. The same page presents the recruiter mix as a combination of global corporations, established brands, and emerging startups.\n\nFor questions about the breadth of recruiter participation or the kinds of employers visiting campus, the prominent recruiters and placements pages should be treated as the primary public references."
     },
     {
       "id": "krmu_conversation_greetings_2026",
