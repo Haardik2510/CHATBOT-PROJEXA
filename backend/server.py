@@ -30,7 +30,7 @@ from auth import (
 )
 from document_processor import DocumentProcessor
 from rag_engine import rag_engine, OLLAMA_CHAT_MODEL
-from web_search import get_web_search_fallback
+from web_search import WebSearchFallback, get_web_search_fallback
 from app_store import AppStore, utc_now_iso
 from supabase_client import (
     SUPABASE_ANON_KEY,
@@ -409,66 +409,74 @@ async def _persist_chat_turn(
     )
 
 
-async def _resolve_chat_result(message: str) -> tuple[dict, bool]:
-    """Resolve a non-streaming chat result with web fallback preserved."""
+def _normalize_answer_mode(answer_mode: Optional[str]) -> str:
+    """Normalize the requested answer source."""
+    return "internet" if (answer_mode or "").strip().lower() == "internet" else "database"
+
+
+async def _resolve_internet_chat_result(
+    message: str,
+    conversation_history: Optional[List[Dict]] = None,
+) -> tuple[dict, bool]:
+    """Resolve a DuckDuckGo-backed internet answer."""
+    search_results = await WebSearchFallback.search(message)
+    if not search_results:
+        return await get_web_search_fallback(message), True
+
+    return {
+        "response": rag_engine.generate_web_response(
+            message,
+            search_results,
+            conversation_history=conversation_history,
+        ),
+        "sources": WebSearchFallback.build_sources(search_results),
+    }, True
+
+
+async def _resolve_chat_result(
+    message: str,
+    answer_mode: str = "database",
+    conversation_history: Optional[List[Dict]] = None,
+) -> tuple[dict, bool]:
+    """Resolve a non-streaming chat result for the selected source mode."""
+    normalized_mode = _normalize_answer_mode(answer_mode)
+
+    if normalized_mode == "internet":
+        try:
+            return await _resolve_internet_chat_result(message, conversation_history=conversation_history)
+        except Exception as exc:
+            logger.exception("Internet chat pipeline failed for message %s: %s", message, exc)
+            return {
+                "response": (
+                    "I ran into a temporary issue while checking DuckDuckGo results. "
+                    "Please try again in a moment."
+                ),
+                "sources": [],
+            }, True
+
     is_web_fallback = False
     rag_result = _default_chat_result()
 
     try:
-        rag_result = rag_engine.chat(message)
+        rag_result = rag_engine.chat(message, conversation_history=conversation_history)
 
-        if not _has_good_sources(rag_result.get("sources", [])) and ENABLE_WEB_FALLBACK:
-            logger.info("No good RAG results, falling back to web search for: %s", message)
-            web_result = await get_web_search_fallback(message)
-            if web_result.get("sources"):
-                rag_result = web_result
-                is_web_fallback = True
-            elif not rag_result.get("response"):
-                rag_result["response"] = (
-                    "I couldn't find a strong answer in the uploaded documents or online sources. "
-                    "Please try rephrasing your question."
-                )
-        elif not _has_good_sources(rag_result.get("sources", [])):
+        if not _has_good_sources(rag_result.get("sources", [])):
             rag_result = {
                 "response": (
                     "I couldn't find a sufficiently grounded answer in the indexed knowledge base. "
-                    "Please rephrase the question or upload/seed more relevant documents."
+                    "Please rephrase the question, switch to Internet mode, or upload/seed more relevant documents."
                 ),
                 "sources": rag_result.get("sources", []),
             }
     except Exception as exc:
         logger.exception("Chat pipeline failed for message %s: %s", message, exc)
-        if not ENABLE_WEB_FALLBACK:
-            rag_result = {
-                "response": (
-                    "I ran into a temporary issue while checking the indexed knowledge base. "
-                    "Please try again in a moment."
-                ),
-                "sources": [],
-            }
-        else:
-            try:
-                web_result = await get_web_search_fallback(message)
-                if web_result.get("sources") or web_result.get("response"):
-                    rag_result = web_result
-                    is_web_fallback = True
-                else:
-                    rag_result = {
-                        "response": (
-                            "I ran into a temporary issue while checking the knowledge base. "
-                            "Please try again, or ask a shorter question."
-                        ),
-                        "sources": []
-                    }
-            except Exception as web_exc:
-                logger.exception("Web fallback failed for message %s: %s", message, web_exc)
-                rag_result = {
-                    "response": (
-                        "I'm having trouble reaching both the knowledge base and the web right now. "
-                        "Please try again in a moment."
-                    ),
-                    "sources": []
-                }
+        rag_result = {
+            "response": (
+                "I ran into a temporary issue while checking the indexed knowledge base. "
+                "Please try again in a moment."
+            ),
+            "sources": [],
+        }
 
     return rag_result, is_web_fallback
 
@@ -886,15 +894,13 @@ async def chat(
     start_time = time.time()
     session_id = await _ensure_chat_session(current_user["id"], chat_request.session_id)
     conversation_history = await _get_recent_conversation_history(current_user["id"], session_id)
+    answer_mode = _normalize_answer_mode(chat_request.answer_mode)
 
-    is_web_fallback = False
-    rag_result = rag_engine.chat(
+    rag_result, is_web_fallback = await _resolve_chat_result(
         chat_request.message,
+        answer_mode=answer_mode,
         conversation_history=conversation_history,
     )
-
-    if not _has_good_sources(rag_result.get("sources", [])):
-        rag_result, is_web_fallback = await _resolve_chat_result(chat_request.message)
     
     # Format sources
     sources = [
@@ -924,7 +930,8 @@ async def chat(
         response=rag_result["response"],
         sources=sources,
         session_id=session_id,
-        voice_output=chat_request.voice_input
+        voice_output=chat_request.voice_input,
+        answer_mode=answer_mode,
     )
 
 
@@ -939,21 +946,24 @@ async def chat_stream(
     start_time = time.time()
     session_id = await _ensure_chat_session(current_user["id"], chat_request.session_id)
     conversation_history = await _get_recent_conversation_history(current_user["id"], session_id)
+    answer_mode = _normalize_answer_mode(chat_request.answer_mode)
 
-    retrieved_docs = rag_engine.search(chat_request.message)
-    source_payload = rag_engine.format_sources(retrieved_docs)
-
-    if not _has_good_sources(source_payload):
-        rag_result, is_web_fallback = await _resolve_chat_result(chat_request.message)
+    if answer_mode == "internet":
+        rag_result, is_web_fallback = await _resolve_chat_result(
+            chat_request.message,
+            answer_mode=answer_mode,
+            conversation_history=conversation_history,
+        )
         sources = _build_source_citations(rag_result.get("sources", []))
 
-        async def fallback_stream():
+        async def internet_stream():
             yield _sse_event(
                 {
                     "type": "meta",
                     "session_id": session_id,
                     "sources": rag_result.get("sources", []),
-                    "is_web_fallback": is_web_fallback
+                    "is_web_fallback": is_web_fallback,
+                    "answer_mode": answer_mode,
                 }
             )
             yield _sse_event({"type": "delta", "content": rag_result["response"]})
@@ -969,7 +979,49 @@ async def chat_stream(
                 processing_time_ms=processing_time,
                 is_web_fallback=is_web_fallback,
             )
-            yield _sse_event({"type": "done", "session_id": session_id})
+            yield _sse_event({"type": "done", "session_id": session_id, "answer_mode": answer_mode})
+
+        return StreamingResponse(
+            internet_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        )
+
+    retrieved_docs = rag_engine.search(chat_request.message)
+    source_payload = rag_engine.format_sources(retrieved_docs)
+
+    if not _has_good_sources(source_payload):
+        rag_result, is_web_fallback = await _resolve_chat_result(
+            chat_request.message,
+            answer_mode=answer_mode,
+            conversation_history=conversation_history,
+        )
+        sources = _build_source_citations(rag_result.get("sources", []))
+
+        async def fallback_stream():
+            yield _sse_event(
+                {
+                    "type": "meta",
+                    "session_id": session_id,
+                    "sources": rag_result.get("sources", []),
+                    "is_web_fallback": is_web_fallback,
+                    "answer_mode": answer_mode,
+                }
+            )
+            yield _sse_event({"type": "delta", "content": rag_result["response"]})
+
+            processing_time = int((time.time() - start_time) * 1000)
+            await _persist_chat_turn(
+                user_id=current_user["id"],
+                session_id=session_id,
+                message=chat_request.message,
+                response_text=rag_result["response"],
+                sources=sources,
+                voice_input=chat_request.voice_input,
+                processing_time_ms=processing_time,
+                is_web_fallback=is_web_fallback,
+            )
+            yield _sse_event({"type": "done", "session_id": session_id, "answer_mode": answer_mode})
 
         return StreamingResponse(
             fallback_stream(),
@@ -987,7 +1039,8 @@ async def chat_stream(
                 "type": "meta",
                 "session_id": session_id,
                 "sources": source_payload,
-                "is_web_fallback": False
+                "is_web_fallback": False,
+                "answer_mode": answer_mode,
             }
         )
 
@@ -1026,7 +1079,7 @@ async def chat_stream(
             processing_time_ms=processing_time,
             is_web_fallback=False,
         )
-        yield _sse_event({"type": "done", "session_id": session_id})
+        yield _sse_event({"type": "done", "session_id": session_id, "answer_mode": answer_mode})
 
     return StreamingResponse(
         event_stream(),

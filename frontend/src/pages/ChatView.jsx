@@ -25,6 +25,7 @@ import { API } from "../lib/api";
 export default function ChatView() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const [answerMode, setAnswerMode] = useState("database");
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -174,6 +175,7 @@ export default function ChatView() {
       role: "user",
       content: input.trim(),
       timestamp: new Date().toISOString(),
+      answerMode,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -185,9 +187,10 @@ export default function ChatView() {
         message: userMessage.content,
         session_id: sessionId,
         voice_input: voiceInput,
+        answer_mode: answerMode,
       });
 
-      const { response: aiResponse, sources, session_id } = response.data;
+      const { response: aiResponse, sources, session_id, answer_mode } = response.data;
 
       if (!sessionId) {
         setSessionId(session_id);
@@ -198,7 +201,10 @@ export default function ChatView() {
         content: aiResponse,
         sources: sources,
         timestamp: new Date().toISOString(),
-        isWebFallback: sources?.some(s => s.document_id?.startsWith('web_'))
+        answerMode: answer_mode || answerMode,
+        isWebFallback:
+          (answer_mode || answerMode) === "internet" ||
+          sources?.some(s => s.document_id?.startsWith("web_")),
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -217,6 +223,7 @@ export default function ChatView() {
           content: fallbackText,
           sources: [],
           timestamp: new Date().toISOString(),
+          answerMode,
           isWebFallback: false,
         },
       ]);
@@ -244,6 +251,21 @@ export default function ChatView() {
     "What are the admission requirements?",
     "Tell me about B.Tech programs",
     "What facilities does SET offer?",
+  ];
+
+  const answerModeOptions = [
+    {
+      value: "database",
+      label: "Database",
+      description: "Use indexed campus documents",
+      icon: FileText,
+    },
+    {
+      value: "internet",
+      label: "Internet",
+      description: "Use DuckDuckGo web results",
+      icon: Globe,
+    },
   ];
 
   return (
@@ -322,22 +344,45 @@ export default function ChatView() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
-                className="flex flex-wrap justify-center gap-2"
+                className="space-y-4"
               >
-                {suggestions.map((suggestion, i) => (
-                  <motion.button
-                    key={suggestion}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.6 + i * 0.1 }}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setInput(suggestion)}
-                    className="px-4 py-2.5 text-sm bg-[#1a1e26] border border-[#2a3142] rounded-xl text-[#9ca3af] hover:text-[#FFBA00] hover:border-[#FFBA00]/30 transition-all duration-200"
-                  >
-                    {suggestion}
-                  </motion.button>
-                ))}
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  {answerModeOptions.map((option, i) => (
+                    <motion.button
+                      key={option.value}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.55 + i * 0.08 }}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setAnswerMode(option.value)}
+                      className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition-all duration-200 ${
+                        answerMode === option.value
+                          ? "border-[#FFBA00]/40 bg-[#FFBA00]/10 text-[#FFBA00]"
+                          : "border-[#2a3142] bg-[#1a1e26] text-[#9ca3af] hover:text-[#FFBA00] hover:border-[#FFBA00]/30"
+                      }`}
+                    >
+                      <option.icon className="h-4 w-4" />
+                      <span>{option.label}</span>
+                    </motion.button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {suggestions.map((suggestion, i) => (
+                    <motion.button
+                      key={suggestion}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.7 + i * 0.1 }}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setInput(suggestion)}
+                      className="px-4 py-2.5 text-sm bg-[#1a1e26] border border-[#2a3142] rounded-xl text-[#9ca3af] hover:text-[#FFBA00] hover:border-[#FFBA00]/30 transition-all duration-200"
+                    >
+                      {suggestion}
+                    </motion.button>
+                  ))}
+                </div>
               </motion.div>
             </motion.div>
           ) : (
@@ -366,15 +411,15 @@ export default function ChatView() {
                     {message.sources && message.sources.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-[#2a3142]">
                         <p className="text-xs text-[#6b7280] mb-2 flex items-center gap-1">
-                          {message.isWebFallback ? (
+                          {message.answerMode === "internet" || message.isWebFallback ? (
                             <>
                               <Globe className="w-3 h-3" />
-                              Web Sources
+                              Internet Sources
                             </>
                           ) : (
                             <>
                               <FileText className="w-3 h-3" />
-                              Document Sources
+                              Database Sources
                             </>
                           )}
                         </p>
@@ -503,6 +548,27 @@ export default function ChatView() {
 
             {/* Text input */}
             <div className="flex-1 relative">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {answerModeOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setAnswerMode(option.value)}
+                    className={`rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                      answerMode === option.value
+                        ? "border-[#FFBA00]/40 bg-[#FFBA00]/10 text-[#FFBA00]"
+                        : "border-[#2a3142] bg-[#12151a] text-[#9ca3af] hover:border-[#FFBA00]/30 hover:text-[#FFBA00]"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+                <span className="text-xs text-[#6b7280]">
+                  {answerMode === "database"
+                    ? "Grounded in indexed SET/KRMU documents"
+                    : "Answered from DuckDuckGo web search"}
+                </span>
+              </div>
               <Textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}

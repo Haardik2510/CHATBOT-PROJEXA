@@ -88,6 +88,7 @@ class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     voice_input: bool = False
+    answer_mode: Literal["database", "internet"] = "database"
 
 
 class SourceCitation(BaseModel):
@@ -102,6 +103,7 @@ class ChatResponse(BaseModel):
     sources: List[SourceCitation] = []
     session_id: str
     voice_output: bool = False
+    answer_mode: Literal["database", "internet"] = "database"
 
 
 class ChatSession(BaseModel):

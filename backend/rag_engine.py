@@ -560,16 +560,22 @@ class RAGEngine:
 
         context = "\n\n".join(context_parts)
 
-        system_prompt = """You are an intelligent academic assistant for K.R. Mangalam University. Your role is to help students, faculty, and staff with accurate information based on the provided context.
+        system_prompt = """You are an academic assistant for K.R. Mangalam University.
 
-Guidelines:
-- Answer questions accurately based ONLY on the provided context and recent conversation history
-- Always cite the source document title when referencing specific facts
-- If the context does not contain enough information, say so clearly instead of guessing
-- Be warm, natural, and concise without sounding robotic
-- When helpful, end with one short follow-up question that keeps the conversation moving
-- Prefer short paragraphs or bullets over long walls of text
-- For greetings or small talk, respond naturally and invite the user to ask about admissions, faculty, fees, infrastructure, placements, hostels, library, or academics"""
+Rules:
+- Use ONLY the provided knowledge-base context and recent conversation history
+- Do not guess, invent, or fill gaps from general knowledge
+- If the context is missing a fact, say that clearly and ask a narrower follow-up
+- Keep answers concise, accurate, and student-friendly
+- When citing facts, mention the relevant source title naturally in the answer
+- Prefer short paragraphs or bullets for multi-part answers
+- For greetings or small talk, respond warmly, explain what topics you can help with, and suggest 2 or 3 concrete next questions
+
+Answer quality checklist:
+- Start with the direct answer
+- Include only the most relevant details
+- Avoid repeating the whole question
+- If multiple sources agree, synthesize them instead of listing raw snippets"""
 
         history_parts = []
         for turn in (conversation_history or [])[-6:]:
@@ -588,7 +594,57 @@ Context from SET Knowledge Base:
 
 Question: {query}
 
-Please provide a helpful, accurate answer based on the context above. Cite the source documents when referencing specific information."""
+Write the best grounded answer you can using only the context above. If the context is insufficient, say so clearly instead of guessing."""
+
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+    def _build_web_messages(
+        self,
+        query: str,
+        web_results: List[Dict],
+        conversation_history: Optional[List[Dict]] = None,
+    ) -> List[Dict]:
+        """Build a prompt that synthesizes DuckDuckGo snippets without inventing details."""
+        result_parts = []
+        for index, result in enumerate(web_results[:4], 1):
+            result_parts.append(
+                f"[Web Source {index}: {result.get('title', 'Untitled')}]\n"
+                f"Snippet: {result.get('snippet', '')}\n"
+                f"URL: {result.get('url', '')}"
+            )
+
+        web_context = "\n\n".join(result_parts)
+
+        history_parts = []
+        for turn in (conversation_history or [])[-6:]:
+            role = turn.get("role", "user")
+            content = (turn.get("content") or "").strip()
+            if content:
+                history_parts.append(f"{role.title()}: {content}")
+        conversation_context = "\n".join(history_parts)
+
+        system_prompt = """You are a careful web-assisted university assistant.
+
+Rules:
+- Use ONLY the provided DuckDuckGo search snippets and recent conversation history
+- Do not claim facts that are not supported by the snippets
+- If snippets are incomplete or conflicting, say that clearly
+- Keep the answer concise and useful
+- Mention the source title or site when giving factual points
+- End with a short caution that the user should verify important details on the official page when appropriate"""
+
+        user_prompt = f"""Recent Conversation:
+{conversation_context or "No previous conversation."}
+
+DuckDuckGo Search Results:
+{web_context or "No web results were found."}
+
+Question: {query}
+
+Summarize the most reliable answer supported by the snippets above."""
 
         return [
             {"role": "system", "content": system_prompt},
@@ -618,7 +674,7 @@ Please provide a helpful, accurate answer based on the context above. Cite the s
             "can you help me",
             "help me",
         ]
-        return any(token in lowered for token in greeting_tokens)
+        return lowered in greeting_tokens or any(lowered.startswith(f"{token} ") for token in greeting_tokens)
 
     @staticmethod
     def _clean_snippet(text: str, limit: int = 220) -> str:
@@ -646,7 +702,10 @@ Please provide a helpful, accurate answer based on the context above. Cite the s
             return (
                 "Hello! I'm here to help with K.R. Mangalam University information.\n\n"
                 "You can ask me about admissions, faculty, fees, infrastructure, hostels, placements, library, or programmes.\n\n"
-                "What would you like to know first?"
+                "Try one of these:\n"
+                "- What are the admission requirements for B.Tech?\n"
+                "- Tell me about SET placements\n"
+                "- What facilities are available on campus?"
             )
 
         top_docs = context_docs[:2]
@@ -924,6 +983,31 @@ Please provide a helpful, accurate answer based on the context above. Cite the s
         except Exception as exc:
             logger.warning("LLM response generation failed, using grounded fallback answer: %s", exc)
             return self._compose_grounded_fallback(query, context_docs, conversation_history=conversation_history)
+
+    def generate_web_response(
+        self,
+        query: str,
+        web_results: List[Dict],
+        conversation_history: Optional[List[Dict]] = None,
+    ) -> str:
+        """Generate an internet-mode answer grounded only in DuckDuckGo snippets."""
+        if not web_results:
+            return (
+                "I couldn't find enough relevant DuckDuckGo results for that question right now. "
+                "Try a more specific query or switch to database mode for indexed campus documents."
+            )
+
+        messages = self._build_web_messages(query, web_results, conversation_history=conversation_history)
+        try:
+            return self._chat_with_fallback(messages, temperature=0.2)
+        except Exception as exc:
+            logger.warning("Web response generation failed, using snippet fallback: %s", exc)
+            top_result = web_results[0]
+            return (
+                f"From the web results, the strongest match is \"{top_result.get('title', 'Untitled source')}\". "
+                f"{self._clean_snippet(top_result.get('snippet', ''))}\n\n"
+                f"Source: {top_result.get('url', 'Unavailable')}"
+            )
 
     async def stream_response(
         self,
