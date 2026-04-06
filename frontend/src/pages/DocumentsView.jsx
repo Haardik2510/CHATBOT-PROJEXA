@@ -39,6 +39,7 @@ import {
   Clock,
   Loader2,
   Settings,
+  Eye,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import KnowledgeBaseSettings from "../components/KnowledgeBaseSettings";
@@ -77,6 +78,9 @@ export default function DocumentsView() {
   const [dragOver, setDragOver] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewData, setPreviewData] = useState(null);
 
   const [fileUpload, setFileUpload] = useState({
     file: null,
@@ -219,6 +223,21 @@ export default function DocumentsView() {
     }
   };
 
+  const previewDocument = async (documentId) => {
+    setPreviewLoading(true);
+    setPreviewDialogOpen(true);
+    try {
+      const response = await axios.get(`${API}/documents/${documentId}/chunks?limit=8`);
+      setPreviewData(response.data);
+    } catch (error) {
+      console.error("Preview error:", error);
+      setPreviewData(null);
+      toast.error(error.response?.data?.detail || "Failed to load chunk preview");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   const formatFileSize = (bytes) => {
     if (bytes === 0) return "0 B";
     const k = 1024;
@@ -264,6 +283,45 @@ export default function DocumentsView() {
           ) : null}
         </div>
         <div className="flex items-center gap-2">
+          <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+            <DialogContent className="bg-[#1a1e26] border-[#2a3142] max-w-3xl">
+              <DialogHeader>
+                <DialogTitle className="text-white font-heading">
+                  {previewData?.title || "Document chunk preview"}
+                </DialogTitle>
+              </DialogHeader>
+              {previewLoading ? (
+                <div className="py-10 flex items-center justify-center">
+                  <Loader2 className="w-6 h-6 animate-spin text-[#FFBA00]" />
+                </div>
+              ) : !previewData ? (
+                <p className="text-sm text-[#6b7280]">No preview available.</p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <Badge variant="outline" className="bg-[#1e2330] border-[#2a3142] text-[#9ca3af]">
+                      {previewData.chunk_count} total chunks
+                    </Badge>
+                    <Badge variant="outline" className={`${statusColors[previewData.status] || "bg-[#1e2330] text-[#9ca3af] border-[#2a3142]"} border`}>
+                      {previewData.status}
+                    </Badge>
+                  </div>
+                  <ScrollArea className="h-[420px] pr-4">
+                    <div className="space-y-3">
+                      {previewData.chunks?.length ? previewData.chunks.map((chunk) => (
+                        <div key={`${previewData.document_id}-${chunk.chunk_index}`} className="rounded-xl border border-[#2a3142] bg-[#12151a] p-4">
+                          <p className="text-xs font-mono text-[#FFBA00] mb-2">Chunk {chunk.chunk_index}</p>
+                          <p className="text-sm text-[#d1d5db] leading-6 whitespace-pre-wrap">{chunk.chunk_text}</p>
+                        </div>
+                      )) : (
+                        <p className="text-sm text-[#6b7280]">No stored chunks were found for this document.</p>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
           <Button
             variant="ghost"
             size="sm"
@@ -475,7 +533,7 @@ export default function DocumentsView() {
                 <TableHead className="text-[#9ca3af]">Chunks</TableHead>
                 <TableHead className="text-[#9ca3af]">Status</TableHead>
                 <TableHead className="text-[#9ca3af]">Created</TableHead>
-                {isAdmin && <TableHead className="text-[#9ca3af] text-right">Actions</TableHead>}
+                <TableHead className="text-[#9ca3af] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -536,8 +594,16 @@ export default function DocumentsView() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-[#9ca3af] text-sm">{formatDate(doc.created_at)}</TableCell>
-                        {isAdmin && (
-                          <TableCell className="text-right">
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => previewDocument(doc.id)}
+                            className="text-[#6b7280] hover:text-white hover:bg-[#1e2330]"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          {isAdmin && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -547,8 +613,8 @@ export default function DocumentsView() {
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
-                          </TableCell>
-                        )}
+                          )}
+                        </TableCell>
                       </motion.tr>
                     );
                   })}

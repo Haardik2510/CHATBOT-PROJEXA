@@ -22,7 +22,9 @@ load_dotenv(ROOT_DIR / ".env")
 from models import (
     UserCreate, UserLogin, UserResponse, TokenResponse, User,
     Document, DocumentResponse, ChatRequest, ChatResponse, SourceCitation,
-    ChatSession, QueryLog, AnalyticsOverview, DailyStats, URLScrapeRequest
+    ChatSession, QueryLog, AnalyticsOverview, DailyStats, URLScrapeRequest,
+    DocumentChunkPreview, DocumentChunkPreviewResponse,
+    RetrievalEvaluationRequest, RetrievalEvaluationResponse,
 )
 from auth import (
     hash_password, verify_password, create_access_token, 
@@ -1375,6 +1377,40 @@ async def list_documents(
     ]
 
 
+@api_router.get("/documents/{document_id}/chunks", response_model=DocumentChunkPreviewResponse)
+async def preview_document_chunks(
+    document_id: str,
+    limit: int = 8,
+    request: Request = None,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Preview extracted chunks for a document."""
+    current_user = await get_current_user(request, credentials)
+
+    if current_user["role"] not in ["faculty", "admin"]:
+        raise HTTPException(status_code=403, detail="Only faculty and admin can preview document chunks")
+
+    document = await store.get_document(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    chunks = rag_engine.get_document_chunks_preview(document_id, limit=limit)
+    return DocumentChunkPreviewResponse(
+        document_id=document["id"],
+        title=document["title"],
+        status=document["status"],
+        chunk_count=document.get("chunk_count", 0),
+        chunks=[
+            DocumentChunkPreview(
+                chunk_index=chunk.get("chunk_index", 0),
+                chunk_text=chunk.get("chunk_text", ""),
+                metadata=chunk.get("metadata") or {},
+            )
+            for chunk in chunks
+        ],
+    )
+
+
 @api_router.delete("/documents/{document_id}")
 async def delete_document(
     document_id: str,
@@ -1583,6 +1619,7 @@ async def health_check():
             "remote_llm_available": rag_stats.get("remote_llm_available", False),
             "ollama_available": rag_stats.get("ollama_available", False),
             "chat_model": rag_stats.get("chat_model", "unknown"),
+            "embedding_provider": rag_stats.get("embedding_provider", "unknown"),
             "embedding_model": rag_stats.get("embedding_model", "unknown"),
             "web_fallback_enabled": ENABLE_WEB_FALLBACK,
         }
@@ -1663,6 +1700,37 @@ async def clear_seed_documents(
     return result
 
 
+@api_router.post("/admin/retrieval-evaluate", response_model=RetrievalEvaluationResponse)
+async def evaluate_retrieval(
+    payload: RetrievalEvaluationRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Inspect retrieval results for a database-mode question (admin only)."""
+    current_user = await get_current_user(request, credentials)
+
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    result = rag_engine.evaluate_retrieval(payload.query, top_k=payload.top_k)
+    return RetrievalEvaluationResponse(
+        query=result["query"],
+        vector_backend=result["vector_backend"],
+        embedding_provider=result["embedding_provider"],
+        embedding_model=result["embedding_model"],
+        chunk_count=result["chunk_count"],
+        results=[
+            DocumentChunkPreview(
+                chunk_index=item.get("chunk_index", 0),
+                chunk_text=item.get("chunk_text", ""),
+                relevance_score=item.get("relevance_score", 0),
+                metadata=item.get("metadata") or {},
+            )
+            for item in result["results"]
+        ],
+    )
+
+
 @api_router.post("/admin/refresh-ollama")
 @api_router.post("/admin/refresh-models")
 async def refresh_ollama_connection(
@@ -1690,6 +1758,7 @@ async def refresh_ollama_connection(
     return {
         "ollama_available": status["ollama_available"],
         "remote_llm_available": status["remote_llm_available"],
+        "remote_embeddings_available": status.get("remote_embeddings_available", False),
         "chat_provider": chat_provider,
         "chat_model": chat_model,
         "message": message,

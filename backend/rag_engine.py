@@ -47,6 +47,9 @@ LLM_API_KEY = os.environ.get("LLM_API_KEY", "").strip()
 LLM_MODEL = os.environ.get("LLM_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct").strip()
 LLM_REQUEST_TIMEOUT = float(os.environ.get("LLM_REQUEST_TIMEOUT", "180"))
 LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "384"))
+EMBEDDING_BASE_URL = _normalize_openai_base_url(os.environ.get("EMBEDDING_BASE_URL", ""))
+EMBEDDING_API_KEY = os.environ.get("EMBEDDING_API_KEY", LLM_API_KEY).strip()
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "").strip()
 
 # Local fallback / embeddings configuration
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
@@ -123,6 +126,77 @@ class OpenAICompatibleClient:
         except Exception:
             pass
         return []
+
+
+class OpenAICompatibleEmbeddingClient:
+    """Optional OpenAI-compatible embeddings client."""
+
+    def __init__(
+        self,
+        base_url: str = EMBEDDING_BASE_URL,
+        model: str = EMBEDDING_MODEL,
+        api_key: str = EMBEDDING_API_KEY,
+    ):
+        self.base_url = _normalize_openai_base_url(base_url)
+        self.model = model
+        self.api_key = api_key
+        self.is_available = False
+        self._check_availability()
+
+    def _headers(self) -> Dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    def _check_availability(self):
+        """Check whether a remote embeddings endpoint is configured and reachable."""
+        if not self.base_url or not self.model:
+            self.is_available = False
+            return
+
+        try:
+            response = httpx.get(
+                f"{self.base_url}/models",
+                headers=self._headers(),
+                timeout=10.0,
+            )
+            self.is_available = response.status_code == 200
+            if self.is_available:
+                logger.info(
+                    "Remote embedding endpoint available at %s using model %s",
+                    self.base_url,
+                    self.model,
+                )
+            else:
+                logger.warning(
+                    "Remote embedding endpoint returned %s from /models",
+                    response.status_code,
+                )
+        except Exception as exc:
+            self.is_available = False
+            logger.warning("Remote embedding connection failed: %s", exc)
+
+    def generate_embedding(self, text: str) -> List[float]:
+        """Generate embeddings with a remote OpenAI-compatible endpoint."""
+        if not self.is_available:
+            raise RuntimeError("Remote embeddings endpoint is not available")
+
+        response = httpx.post(
+            f"{self.base_url}/embeddings",
+            headers=self._headers(),
+            json={
+                "model": self.model,
+                "input": text,
+            },
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        data = payload.get("data") or []
+        if not data or not data[0].get("embedding"):
+            raise RuntimeError("Remote embeddings endpoint returned no embedding payload")
+        return data[0]["embedding"]
 
     def chat(self, messages: List[Dict], model: Optional[str] = None, temperature: float = 0.7) -> str:
         """Generate a non-streaming chat completion from the remote endpoint."""
@@ -367,6 +441,7 @@ class RAGEngine:
 
     def __init__(self):
         self.remote_llm = OpenAICompatibleClient()
+        self.remote_embeddings = OpenAICompatibleEmbeddingClient()
         self.ollama = OllamaClient()
         self.supabase = get_supabase_admin_client() if has_supabase_config() else None
         self.use_supabase_vectors = bool(self.supabase)
@@ -401,6 +476,39 @@ class RAGEngine:
         logger.info("Supabase vector store enabled: %s", self.use_supabase_vectors)
         if self.embedding_dimension:
             logger.info("Detected collection embedding dimension: %s", self.embedding_dimension)
+
+    def _has_semantic_embeddings(self) -> bool:
+        """Return whether a real embedding provider is available."""
+        return self.remote_embeddings.is_available or self.ollama.is_available
+
+    def _embedding_provider_name(self) -> str:
+        """Return the active embedding provider label."""
+        if self.remote_embeddings.is_available:
+            return "remote"
+        if self.ollama.is_available:
+            return "ollama"
+        return "hash-based"
+
+    def _embedding_model_name(self) -> str:
+        """Return the active embedding model label."""
+        if self.remote_embeddings.is_available:
+            return self.remote_embeddings.model or "remote-embedding-model"
+        if self.ollama.is_available:
+            return OLLAMA_EMBEDDING_MODEL
+        return "hash-based"
+
+    def _generate_embedding(self, text: str) -> List[float]:
+        """Generate embeddings with the best available provider without changing default behavior."""
+        if self.remote_embeddings.is_available:
+            try:
+                return self.remote_embeddings.generate_embedding(text)
+            except Exception as exc:
+                logger.warning("Remote embedding generation failed, falling back: %s", exc)
+
+        if self.ollama.is_available:
+            return self.ollama.generate_embedding(text)
+
+        return self.ollama._fallback_embedding(text)
 
     def _create_chroma_client(self):
         """Create a Chroma client and fall back to a fresh writable store if needed."""
@@ -1061,7 +1169,7 @@ Summarize the most reliable answer supported by the snippets above."""
                 continue
 
             chunk_id = f"{document_id}_chunk_{index}"
-            raw_embedding = self.ollama.generate_embedding(chunk)
+            raw_embedding = self._generate_embedding(chunk)
             embedding = self._align_embedding_dimension(
                 raw_embedding,
                 target_dimension=(
@@ -1142,13 +1250,13 @@ Summarize the most reliable answer supported by the snippets above."""
                 logger.warning("Chroma lexical search failed: %s", exc)
 
         # If no real embedding model is available, lexical retrieval is the most reliable mode.
-        if not self.ollama.is_available:
+        if not self._has_semantic_embeddings():
             if lexical_results:
                 self.last_vector_backend_used = "supabase_lexical" if self.use_supabase_vectors else "chroma_lexical"
                 return lexical_results
             return []
 
-        raw_query_embedding = self.ollama.generate_embedding(query)
+        raw_query_embedding = self._generate_embedding(query)
         query_embedding = self._align_embedding_dimension(
             raw_query_embedding,
             target_dimension=(
@@ -1257,6 +1365,72 @@ Summarize the most reliable answer supported by the snippets above."""
             seen_docs.add(doc_id)
 
         return sources[:3]
+
+    def get_document_chunks_preview(self, document_id: str, limit: int = 8) -> List[Dict]:
+        """Fetch a small preview of stored chunks for a document."""
+        preview_limit = max(1, min(limit, 12))
+
+        if self.use_supabase_vectors and self.supabase:
+            response = (
+                self.supabase.table("document_chunks")
+                .select("chunk_index, chunk_text, metadata")
+                .eq("document_id", document_id)
+                .order("chunk_index")
+                .limit(preview_limit)
+                .execute()
+            )
+            return [
+                {
+                    "chunk_index": row.get("chunk_index", 0),
+                    "chunk_text": self._clean_snippet(row.get("chunk_text", ""), limit=320),
+                    "metadata": row.get("metadata") or {},
+                }
+                for row in (response.data or [])
+            ]
+
+        try:
+            payload = self.collection.get(where={"document_id": document_id}, include=["documents", "metadatas"])
+            documents = payload.get("documents") or []
+            metadatas = payload.get("metadatas") or []
+            rows = []
+            for doc, metadata in zip(documents, metadatas):
+                meta = metadata or {}
+                rows.append(
+                    {
+                        "chunk_index": meta.get("chunk_index", 0),
+                        "chunk_text": self._clean_snippet(doc or "", limit=320),
+                        "metadata": meta,
+                    }
+                )
+            rows.sort(key=lambda item: item.get("chunk_index", 0))
+            return rows[:preview_limit]
+        except Exception as exc:
+            logger.warning("Chunk preview fetch failed for %s: %s", document_id, exc)
+            return []
+
+    def evaluate_retrieval(self, query: str, top_k: int = 5) -> Dict:
+        """Run a retrieval-only debug pass without generating a chat answer."""
+        retrieved_docs = self.search(query, top_k=top_k)
+        results = [
+            {
+                "chunk_index": doc.get("chunk_index", 0),
+                "chunk_text": self._clean_snippet(doc.get("content", ""), limit=320),
+                "relevance_score": doc.get("relevance_score", 0),
+                "metadata": {
+                    "document_id": doc.get("document_id", ""),
+                    "document_title": doc.get("document_title", "Unknown"),
+                },
+            }
+            for doc in retrieved_docs[:top_k]
+        ]
+        return {
+            "query": query,
+            "vector_backend": self.last_vector_backend_used,
+            "embedding_provider": self._embedding_provider_name(),
+            "embedding_model": self._embedding_model_name(),
+            "chunk_count": len(results),
+            "results": results,
+        }
 
     @staticmethod
     def _filter_relevant_docs(retrieved_docs: List[Dict], min_score: float = 0.45) -> List[Dict]:
@@ -1384,6 +1558,7 @@ Summarize the most reliable answer supported by the snippets above."""
             "vector_backend": self.last_vector_backend_used,
             "vector_store_mode": "supabase_with_chroma_fallback" if self.use_supabase_vectors else "chroma_only",
             "embedding_dimension": self.embedding_dimension,
+            "embedding_provider": self._embedding_provider_name(),
             "chat_provider": chat_provider,
             "chat_model": chat_model,
             "remote_llm_available": self.remote_llm.is_available,
@@ -1392,16 +1567,18 @@ Summarize the most reliable answer supported by the snippets above."""
             "remote_llm_models": self.remote_llm.list_models() if self.remote_llm.is_available else [],
             "ollama_available": self.ollama.is_available,
             "ollama_models": self.ollama.list_models() if self.ollama.is_available else [],
-            "embedding_model": OLLAMA_EMBEDDING_MODEL if self.ollama.is_available else "hash-based",
+            "embedding_model": self._embedding_model_name(),
         }
 
     def refresh_model_connections(self) -> Dict[str, bool]:
         """Refresh both remote and local model provider connections."""
         self.remote_llm._check_availability()
+        self.remote_embeddings._check_availability()
         self.ollama._check_availability()
         return {
             "remote_llm_available": self.remote_llm.is_available,
             "ollama_available": self.ollama.is_available,
+            "remote_embeddings_available": self.remote_embeddings.is_available,
         }
 
     def refresh_ollama_connection(self):
