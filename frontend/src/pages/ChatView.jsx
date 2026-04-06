@@ -22,6 +22,28 @@ import {
 
 import { API } from "../lib/api";
 
+const getDatabaseConfidence = (sources = []) => {
+  const bestScore = Math.max(...sources.map((source) => Number(source?.relevance_score || 0)), 0);
+  if (bestScore >= 0.82) {
+    return { label: "High confidence", className: "bg-green-500/15 text-green-400 border border-green-500/30" };
+  }
+  if (bestScore >= 0.62) {
+    return { label: "Medium confidence", className: "bg-yellow-500/15 text-yellow-400 border border-yellow-500/30" };
+  }
+  return { label: "Low confidence", className: "bg-red-500/15 text-red-400 border border-red-500/30" };
+};
+
+const shouldInlineCite = (line) => {
+  const normalized = (line || "").trim();
+  if (!normalized) return false;
+  return (
+    !/^source:/i.test(normalized) &&
+    !/^additional source:/i.test(normalized) &&
+    !/^if you want/i.test(normalized) &&
+    !/^what i could not verify/i.test(normalized)
+  );
+};
+
 export default function ChatView() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -268,6 +290,51 @@ export default function ChatView() {
     },
   ];
 
+  const renderAssistantContent = (message) => {
+    if (message.role !== "assistant" || message.answerMode !== "database" || !message.sources?.length) {
+      return <p className="whitespace-pre-wrap">{message.content}</p>;
+    }
+
+    const lines = String(message.content || "").split("\n");
+    let evidenceLineIndex = 0;
+
+    return (
+      <div className="space-y-2">
+        {lines.map((line, index) => {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            return <div key={`line-${index}`} className="h-2" />;
+          }
+
+          if (/^source:/i.test(trimmed) || /^additional source:/i.test(trimmed)) {
+            return null;
+          }
+
+          const isHeading = trimmed.endsWith(":") && !trimmed.startsWith("-");
+          const sourceIndex = Math.min(evidenceLineIndex, message.sources.length - 1);
+          const citation = shouldInlineCite(trimmed) ? message.sources[sourceIndex] : null;
+          if (citation && !isHeading) {
+            evidenceLineIndex += 1;
+          }
+
+          return (
+            <p key={`line-${index}`} className="whitespace-pre-wrap leading-7">
+              {line}
+              {citation && !isHeading ? (
+                <span
+                  className="ml-2 align-super text-[10px] font-semibold text-[#FFBA00]/85"
+                  title={citation.document_title}
+                >
+                  [{Math.min(sourceIndex + 1, message.sources.length)}]
+                </span>
+              ) : null}
+            </p>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* Header */}
@@ -405,24 +472,31 @@ export default function ChatView() {
                         : "message-assistant"
                     }
                   >
-                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    {renderAssistantContent(message)}
 
                     {/* Sources/Citations */}
                     {message.sources && message.sources.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-[#2a3142]">
-                        <p className="text-xs text-[#6b7280] mb-2 flex items-center gap-1">
-                          {message.answerMode === "internet" || message.isWebFallback ? (
-                            <>
-                              <Globe className="w-3 h-3" />
-                              Internet Sources
-                            </>
-                          ) : (
-                            <>
-                              <FileText className="w-3 h-3" />
-                              Database Sources
-                            </>
-                          )}
-                        </p>
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <p className="text-xs text-[#6b7280] flex items-center gap-1">
+                            {message.answerMode === "internet" || message.isWebFallback ? (
+                              <>
+                                <Globe className="w-3 h-3" />
+                                Internet Sources
+                              </>
+                            ) : (
+                              <>
+                                <FileText className="w-3 h-3" />
+                                Database Sources
+                              </>
+                            )}
+                          </p>
+                          {message.answerMode === "database" && !message.isWebFallback ? (
+                            <span className={`rounded-full px-2 py-1 text-[11px] ${getDatabaseConfidence(message.sources).className}`}>
+                              {getDatabaseConfidence(message.sources).label}
+                            </span>
+                          ) : null}
+                        </div>
                         <div className="flex flex-wrap gap-2">
                           {message.sources.map((source, i) => (
                             <span
@@ -430,6 +504,9 @@ export default function ChatView() {
                               className="citation-pill"
                               title={source.chunk_text}
                             >
+                              {message.answerMode === "database" && !message.isWebFallback ? (
+                                <span className="mr-1 text-[#FFBA00]">[{i + 1}]</span>
+                              ) : null}
                               {source.document_title.length > 30 
                                 ? source.document_title.slice(0, 30) + '...'
                                 : source.document_title}

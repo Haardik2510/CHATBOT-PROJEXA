@@ -358,6 +358,19 @@ def _build_source_citations(source_payload: list) -> List[SourceCitation]:
     ]
 
 
+def _normalize_document_filename(value: Optional[str]) -> str:
+    """Normalize a filename for duplicate detection."""
+    return (value or "").strip().lower()
+
+
+def _normalize_source_url(value: Optional[str]) -> str:
+    """Normalize a URL for duplicate detection."""
+    normalized = (value or "").strip().lower()
+    if normalized.endswith("/"):
+        normalized = normalized[:-1]
+    return normalized
+
+
 async def _ensure_chat_session(user_id: str, session_id: Optional[str]) -> str:
     """Return an existing session id or create a new one."""
     if session_id:
@@ -1221,6 +1234,27 @@ async def upload_document(
     file_content = await file.read()
     file_size = len(file_content)
 
+    existing_documents = await store.list_documents(limit=500)
+    normalized_filename = _normalize_document_filename(filename)
+    duplicate_document = next(
+        (
+            doc for doc in existing_documents
+            if doc.get("status") != "failed"
+            and doc.get("doc_type") == doc_type
+            and _normalize_document_filename(doc.get("filename")) == normalized_filename
+            and int(doc.get("file_size") or 0) == file_size
+        ),
+        None,
+    )
+    if duplicate_document:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"This document looks like a duplicate of \"{duplicate_document.get('title', filename)}\" "
+                "and is already in the knowledge base."
+            ),
+        )
+
     # Create document record
     document = Document(
         title=title,
@@ -1283,6 +1317,25 @@ async def add_url_document(
     
     if current_user["role"] not in ["faculty", "admin"]:
         raise HTTPException(status_code=403, detail="Only faculty and admin can add documents")
+
+    existing_documents = await store.list_documents(limit=500)
+    normalized_url = _normalize_source_url(url_request.url)
+    duplicate_document = next(
+        (
+            doc for doc in existing_documents
+            if doc.get("status") != "failed"
+            and doc.get("doc_type") == "url"
+            and _normalize_source_url(doc.get("filename")) == normalized_url
+        ),
+        None,
+    )
+    if duplicate_document:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"This URL is already in the knowledge base as \"{duplicate_document.get('title', url_request.url)}\"."
+            ),
+        )
     
     # Create document record
     document = Document(
