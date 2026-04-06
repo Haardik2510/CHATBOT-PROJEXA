@@ -452,15 +452,24 @@ class RAGEngine:
 
         score = 0.0
         if query_text in haystack:
-            score += 0.55
+            score += 0.35
 
         match_count = sum(1 for term in query_terms if term in haystack)
-        score += 0.35 * (match_count / len(query_terms))
+        coverage_ratio = match_count / len(query_terms)
+        score += 0.50 * coverage_ratio
+
+        if len(query_terms) > 1:
+            bigrams = [
+                f"{query_terms[index]} {query_terms[index + 1]}"
+                for index in range(len(query_terms) - 1)
+            ]
+            bigram_matches = sum(1 for phrase in bigrams if phrase in haystack)
+            score += 0.15 * (bigram_matches / len(bigrams))
 
         if document_title:
             title_lower = document_title.lower()
             title_matches = sum(1 for term in query_terms if term in title_lower)
-            score += 0.20 * (title_matches / len(query_terms))
+            score += 0.15 * (title_matches / len(query_terms))
 
         return min(score, 1.0)
 
