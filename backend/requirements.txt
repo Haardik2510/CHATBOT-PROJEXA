@@ -117,6 +117,9 @@ python-dotenv==1.2.2
 python-jose==3.5.0
 python-multipart==0.0.22
 python-pptx==1.0.2
+pytesseract==0.3.13
+PyMuPDF==1.26.5
+rapidocr-onnxruntime==1.4.4
 pytokens==0.4.1
 PyYAML==6.0.3
 referencing==0.37.0
