@@ -130,13 +130,34 @@ class ChatImage(BaseModel):
     origin: Literal["document", "website"] = "document"
 
 
+class ChatArtifact(BaseModel):
+    artifact_type: Literal["pdf"] = "pdf"
+    title: str
+    filename: str
+    mime_type: str = "application/pdf"
+    data_url: str
+    text_content: str = ""
+    generated_from_role: Literal["user", "assistant", "system"] = "assistant"
+
+
 class ChatResponse(BaseModel):
     response: str
     sources: List[SourceCitation] = []
     images: List[ChatImage] = []
+    artifacts: List[ChatArtifact] = []
     session_id: str
     voice_output: bool = False
     answer_mode: Literal["database", "internet"] = "database"
+
+
+class PdfExportRequest(BaseModel):
+    content: str
+    title: Optional[str] = None
+    generated_from_role: Literal["user", "assistant", "system"] = "assistant"
+
+
+class PdfExportResponse(BaseModel):
+    artifact: ChatArtifact
 
 
 class RetrievalEvaluationRequest(BaseModel):
