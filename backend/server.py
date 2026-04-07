@@ -13,6 +13,7 @@ import asyncio
 import httpx
 import os
 import logging
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime, timezone, timedelta
@@ -37,6 +38,13 @@ from auth import (
 )
 from document_processor import DocumentProcessor
 from rag_engine import rag_engine, OLLAMA_CHAT_MODEL
+from large_pdf_rag import (
+    answer_question_payload as answer_large_pdf_question,
+    collection_has_data as large_pdf_collection_has_data,
+    delete_document as delete_large_pdf_document,
+    index_pdf_document,
+    preview_document_chunks as preview_large_pdf_chunks,
+)
 from web_search import WebSearchFallback, get_web_search_fallback
 from events_feed import KRMUEventsFeed
 from app_store import AppStore, utc_now_iso
@@ -53,6 +61,7 @@ from supabase_client import (
 )
 
 ENABLE_WEB_FALLBACK = os.environ.get("ENABLE_WEB_FALLBACK", "false").strip().lower() == "true"
+LARGE_PDF_COLLECTION_NAME = os.environ.get("LARGE_PDF_COLLECTION_NAME", "render-large-pdf-documents").strip() or "render-large-pdf-documents"
 
 # MongoDB connection
 mongo_url = os.environ.get("MONGO_URL")
@@ -411,6 +420,69 @@ def _build_source_citations(source_payload: list) -> List[SourceCitation]:
         )
         for source in source_payload
     ]
+
+
+def _should_use_large_pdf_pipeline(file_type: str, file_size: int) -> bool:
+    """Route large PDFs through the stronger hybrid RAG indexer automatically."""
+    size_mb = max(file_size / (1024 * 1024), 0.0)
+    return file_type == "pdf" and size_mb >= 8
+
+
+async def _index_large_pdf_document(
+    *,
+    document_id: str,
+    title: str,
+    file_content: bytes,
+) -> Dict:
+    """Index a large PDF into the shared high-capacity collection."""
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(file_content)
+            temp_path = temp_file.name
+
+        result = await asyncio.to_thread(
+            index_pdf_document,
+            temp_path,
+            LARGE_PDF_COLLECTION_NAME,
+            document_id=document_id,
+            document_title=title,
+        )
+        return result
+    finally:
+        if temp_path:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+
+async def _resolve_large_pdf_chat_result(message: str) -> Optional[dict]:
+    """Use the large-PDF hybrid index when it has better-grounded material."""
+    if not large_pdf_collection_has_data(LARGE_PDF_COLLECTION_NAME):
+        return None
+
+    try:
+        payload = await asyncio.to_thread(
+            answer_large_pdf_question,
+            message,
+            LARGE_PDF_COLLECTION_NAME,
+        )
+    except FileNotFoundError:
+        return None
+    except Exception as exc:
+        logger.warning("Large PDF RAG fallback failed for %s: %s", message, exc)
+        return None
+
+    if not payload or payload.get("response") == "Not enough information found":
+        return None
+
+    return {
+        "response": payload.get("response", ""),
+        "sources": payload.get("sources", []),
+        "images": [],
+        "artifacts": [],
+    }
 
 
 def _store_document_images(document_id: str, image_payload: list) -> List[dict]:
@@ -816,15 +888,19 @@ async def _resolve_chat_result(
         rag_result = rag_engine.chat(message, conversation_history=conversation_history)
 
         if not _has_good_sources(rag_result.get("sources", [])):
-            rag_result = {
-                "response": (
-                    "I couldn't find a sufficiently grounded answer in the indexed knowledge base. "
-                    "Please rephrase the question or upload/seed more relevant documents."
-                ),
-                "sources": rag_result.get("sources", []),
-                "images": rag_result.get("images", []),
-                "artifacts": rag_result.get("artifacts", []),
-            }
+            large_pdf_result = await _resolve_large_pdf_chat_result(message)
+            if large_pdf_result and _has_good_sources(large_pdf_result.get("sources", [])):
+                rag_result = large_pdf_result
+            else:
+                rag_result = {
+                    "response": (
+                        "I couldn't find a sufficiently grounded answer in the indexed knowledge base. "
+                        "Please rephrase the question or upload/seed more relevant documents."
+                    ),
+                    "sources": rag_result.get("sources", []),
+                    "images": rag_result.get("images", []),
+                    "artifacts": rag_result.get("artifacts", []),
+                }
     except Exception as exc:
         logger.exception("Chat pipeline failed for message %s: %s", message, exc)
         rag_result = {
@@ -1517,6 +1593,29 @@ async def process_document_background(
         # Update status to processing
         await store.update_document(document_id, {"status": "processing"})
 
+        if _should_use_large_pdf_pipeline(file_type, file_size):
+            large_index_result = await _index_large_pdf_document(
+                document_id=document_id,
+                title=title,
+                file_content=file_content,
+            )
+            await store.update_document(
+                document_id,
+                {
+                    "status": "indexed",
+                    "chunk_count": int(large_index_result.get("chunks_indexed", 0)),
+                    "indexed_at": datetime.now(timezone.utc).isoformat(),
+                    "error_message": None,
+                },
+            )
+            logger.info(
+                "Large PDF %s indexed into %s with %s chunks",
+                document_id,
+                LARGE_PDF_COLLECTION_NAME,
+                large_index_result.get("chunks_indexed", 0),
+            )
+            return
+
         extraction_timeout = _document_process_timeout_seconds(file_type, file_size)
         indexing_timeout = _document_index_timeout_seconds(0, file_size)
         disable_global_timeout = _should_disable_global_document_timeout(file_type, file_size)
@@ -1856,6 +1955,8 @@ async def preview_document_chunks(
         raise HTTPException(status_code=404, detail="Document not found")
 
     chunks = rag_engine.get_document_chunks_preview(document_id, limit=limit)
+    if not chunks and document.get("doc_type") == "pdf":
+        chunks = preview_large_pdf_chunks(LARGE_PDF_COLLECTION_NAME, document_id, limit=limit)
     return DocumentChunkPreviewResponse(
         document_id=document["id"],
         title=document["title"],
@@ -1890,6 +1991,7 @@ async def delete_document(
     
     # Delete from RAG engine
     rag_engine.delete_document(document_id)
+    delete_large_pdf_document(LARGE_PDF_COLLECTION_NAME, document_id)
     
     # Delete from database
     await store.delete_document(document_id)
@@ -1923,6 +2025,7 @@ async def bulk_delete_documents(
             continue
 
         rag_engine.delete_document(document_id)
+        delete_large_pdf_document(LARGE_PDF_COLLECTION_NAME, document_id)
         await store.delete_document(document_id)
         deleted_count += 1
 
