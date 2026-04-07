@@ -137,6 +137,8 @@ class GeminiEventEnhancer:
                 )
             )
 
+        event_context = "\n\n".join(event_blocks)
+
         prompt = (
             "You are preparing a beautiful but strictly grounded university event response for K.R. Mangalam University.\n"
             "Use ONLY the provided official KRMU event text and images. Do not invent details, dates, speakers, venues, or outcomes.\n"
@@ -152,7 +154,7 @@ class GeminiEventEnhancer:
             "Keep it elegant, readable, and under 220 words unless the user asked for current events across multiple items.\n\n"
             f"User query: {query}\n"
             f"Recent chat context:\n{history_context or 'None'}\n\n"
-            f"Official KRMU event data:\n\n{'\n\n'.join(event_blocks)}"
+            f"Official KRMU event data:\n\n{event_context}"
         )
 
         contents = [prompt]
