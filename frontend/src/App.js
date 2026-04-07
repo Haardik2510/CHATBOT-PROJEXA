@@ -13,7 +13,7 @@ import "./App.css";
 const LoadingScreen = () => (
   <div className="min-h-screen scholar-hero flex items-center justify-center">
     <div className="text-center">
-      <div className="mx-auto mb-4 h-14 w-14 rounded-full border-4 border-white/30 border-t-white animate-spin" />
+      <div className="mx-auto mb-4 scholar-loader on-dark" />
       <p className="font-heading text-white">Entering Scholar Pulse...</p>
     </div>
   </div>

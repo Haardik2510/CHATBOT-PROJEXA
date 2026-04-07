@@ -380,7 +380,7 @@ export default function DocumentsView() {
               </DialogHeader>
               {previewLoading ? (
                 <div className="py-10 flex items-center justify-center">
-                  <Loader2 className="w-6 h-6 animate-spin text-[#FFBA00]" />
+                  <div className="scholar-loader scholar-loader-sm" />
                 </div>
               ) : !previewData ? (
                 <p className="text-sm text-[#6b7280]">No preview available.</p>
@@ -675,7 +675,7 @@ export default function DocumentsView() {
               {isLoading ? (
                 <TableRow>
                   <TableCell colSpan={columnCount} className="text-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-[#FFBA00]" />
+                    <div className="mx-auto scholar-loader scholar-loader-sm" />
                   </TableCell>
                 </TableRow>
               ) : documents.length === 0 ? (
