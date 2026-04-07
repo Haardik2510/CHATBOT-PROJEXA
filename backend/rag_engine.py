@@ -947,23 +947,19 @@ Rules:
 - Do not guess, invent, or fill gaps from general knowledge
 - If the context is missing a fact, say that clearly and ask a narrower follow-up
 - Keep answers concise, accurate, student-friendly, and easy to scan
-- When citing facts, mention the relevant source title naturally in the answer
-- Prefer short bullets for factual answers instead of long paragraphs
+- Write like a polished production assistant, not like a report template
+- Use short paragraphs by default; use bullets only when they genuinely improve clarity
+- Do not use headings such as "Direct answer", "Key points", "Highlights", "Why it matters", or "Source"
+- Keep citations out of the main answer body because the UI will render sources separately at the end
 - For greetings or small talk, respond warmly, explain what topics you can help with, and suggest 2 or 3 concrete next questions
 
 Answer quality checklist:
-- Start with the direct answer
+- Start with the answer itself
 - Include only the most relevant details
 - Avoid repeating the whole question
 - If multiple sources agree, synthesize them instead of listing raw snippets
 - Do not mention numbers, dates, fees, rankings, approvals, contacts, or counts unless they appear in the context
-- If a fact is only partially supported, say "Based on the indexed document..." instead of stating it as certain
-
-Required format for non-greeting answers:
-1. Start with a one-line "Direct answer:" sentence
-2. Then add a "Key points:" section with 2 to 4 short bullet points
-3. End with a "Source:" line naming the most relevant document title
-4. If the context is incomplete, add a final line: "What I could not verify from the indexed docs:" followed by the missing point"""
+- If a fact is only partially supported, say that it is based on the indexed documents rather than presenting it as certain"""
 
         history_parts = []
         for turn in (conversation_history or [])[-6:]:
@@ -1123,9 +1119,9 @@ Summarize the most reliable answer supported by the snippets above."""
                 if latest_user_topic:
                     break
 
-        lead = "Direct answer: Here is what I found in the KRMU knowledge base."
+        lead = "Here is what I found in the KRMU knowledge base."
         if latest_user_topic and query.strip().lower() in {"what about the fees?", "and fees?", "what about fees?", "fees?"}:
-            lead = f"Direct answer: Continuing from your earlier question about \"{latest_user_topic}\", here is what I found."
+            lead = f"Continuing from your earlier question about \"{latest_user_topic}\", here is what I found."
 
         first_doc = top_docs[0]
         first_title = first_doc.get("document_title", "Unknown source")
@@ -1134,21 +1130,16 @@ Summarize the most reliable answer supported by the snippets above."""
         response_parts = [
             lead,
             "",
-            "Key points:",
-            f"- {first_snippet}",
-            "",
-            f"Source: {first_title}",
+            first_snippet,
         ]
 
         if len(top_docs) > 1:
             second_doc = top_docs[1]
-            second_title = second_doc.get("document_title", "Unknown source")
             second_snippet = self._clean_snippet(second_doc.get("content", ""))
             response_parts.extend(
                 [
                     "",
-                    f"- Also relevant: {second_snippet}",
-                    f"Additional source: {second_title}",
+                    f"Also relevant: {second_snippet}",
                 ]
             )
 
