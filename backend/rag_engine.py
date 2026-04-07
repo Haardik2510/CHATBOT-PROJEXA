@@ -55,6 +55,7 @@ EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "").strip()
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_CHAT_MODEL = os.environ.get("OLLAMA_CHAT_MODEL", "llama3").strip()
 OLLAMA_EMBEDDING_MODEL = os.environ.get("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text").strip()
+VECTOR_BACKEND = os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
 
 
 class OpenAICompatibleClient:
@@ -444,7 +445,7 @@ class RAGEngine:
         self.remote_embeddings = OpenAICompatibleEmbeddingClient()
         self.ollama = OllamaClient()
         self.supabase = get_supabase_admin_client() if has_supabase_config() else None
-        self.use_supabase_vectors = bool(self.supabase)
+        self.use_supabase_vectors = bool(self.supabase) and VECTOR_BACKEND == "supabase"
         self.supabase_embedding_dimension = 768
         self.last_vector_backend_used = "supabase" if self.use_supabase_vectors else "chroma"
 

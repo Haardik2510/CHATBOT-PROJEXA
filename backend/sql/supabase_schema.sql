@@ -33,7 +33,9 @@ create table if not exists public.documents (
   seed_origin text,
   category text,
   source_url text,
-  verified_on timestamptz
+  verified_on timestamptz,
+  total_parts integer not null default 1,
+  processing_metadata jsonb not null default '{}'::jsonb
 );
 
 create table if not exists public.chat_sessions (

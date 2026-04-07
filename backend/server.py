@@ -3,6 +3,8 @@ import json
 import base64
 import textwrap
 import re
+import gc
+import shutil
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, BackgroundTasks, Request, Response
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -14,8 +16,9 @@ import httpx
 import os
 import logging
 import tempfile
+import fitz
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone, timedelta
 import time
 import uuid
@@ -40,9 +43,13 @@ from document_processor import DocumentProcessor
 from rag_engine import rag_engine, OLLAMA_CHAT_MODEL
 from large_pdf_rag import (
     answer_question_payload as answer_large_pdf_question,
+    chunk_document as chunk_large_pdf_document,
     collection_has_data as large_pdf_collection_has_data,
     delete_document as delete_large_pdf_document,
+    embed_and_store as embed_large_pdf_chunks,
+    extract_and_clean_pdf as extract_large_pdf_pages,
     index_pdf_document,
+    job_collection_name as large_pdf_job_collection_name,
     preview_document_chunks as preview_large_pdf_chunks,
 )
 from web_search import WebSearchFallback, get_web_search_fallback
@@ -104,6 +111,9 @@ DOCUMENT_INDEX_MAX_TIMEOUT_SECONDS = max(
     DOCUMENT_INDEX_BASE_TIMEOUT_SECONDS,
     int(os.environ.get("DOCUMENT_INDEX_MAX_TIMEOUT_SECONDS", "5400")),
 )
+SUPABASE_SPLIT_THRESHOLD_BYTES = int(os.environ.get("SUPABASE_SPLIT_THRESHOLD_BYTES", str(45 * 1024 * 1024)))
+SUPABASE_MAX_PART_BYTES = int(os.environ.get("SUPABASE_MAX_PART_BYTES", str(40 * 1024 * 1024)))
+SSE_PAGE_BATCH_SIZE = max(1, int(os.environ.get("SSE_PAGE_BATCH_SIZE", "5")))
 
 
 def _parse_cors_origins(raw_value: str) -> List[str]:
@@ -459,27 +469,48 @@ async def _index_large_pdf_document(
 
 async def _resolve_large_pdf_chat_result(message: str) -> Optional[dict]:
     """Use the large-PDF hybrid index when it has better-grounded material."""
-    if not large_pdf_collection_has_data(LARGE_PDF_COLLECTION_NAME):
-        return None
+    documents = await store.list_documents(limit=200)
+    candidate_collections = {
+        _document_collection_name(document)
+        for document in documents
+        if document.get("status") == "indexed" and document.get("doc_type") == "pdf"
+    }
+    if large_pdf_collection_has_data(LARGE_PDF_COLLECTION_NAME):
+        candidate_collections.add(LARGE_PDF_COLLECTION_NAME)
 
-    try:
-        payload = await asyncio.to_thread(
-            answer_large_pdf_question,
-            message,
-            LARGE_PDF_COLLECTION_NAME,
-        )
-    except FileNotFoundError:
-        return None
-    except Exception as exc:
-        logger.warning("Large PDF RAG fallback failed for %s: %s", message, exc)
-        return None
+    best_payload: Optional[dict] = None
+    best_confidence = 0.0
 
-    if not payload or payload.get("response") == "Not enough information found":
+    for collection_name in candidate_collections:
+        if not collection_name or not large_pdf_collection_has_data(collection_name):
+            continue
+
+        try:
+            payload = await asyncio.to_thread(
+                answer_large_pdf_question,
+                message,
+                collection_name,
+            )
+        except FileNotFoundError:
+            continue
+        except Exception as exc:
+            logger.warning("Large PDF RAG fallback failed for %s in %s: %s", message, collection_name, exc)
+            continue
+
+        if not payload or payload.get("response") == "Not enough information found":
+            continue
+
+        confidence = float(payload.get("confidence") or 0.0)
+        if confidence >= best_confidence:
+            best_payload = payload
+            best_confidence = confidence
+
+    if not best_payload:
         return None
 
     return {
-        "response": payload.get("response", ""),
-        "sources": payload.get("sources", []),
+        "response": best_payload.get("response", ""),
+        "sources": best_payload.get("sources", []),
         "images": [],
         "artifacts": [],
     }
@@ -921,7 +952,301 @@ def _sse_event(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
+async def _write_upload_to_temp_file(file: UploadFile) -> tuple[str, int]:
+    """Persist an uploaded file to a temp path without holding it all in RAM."""
+    suffix = Path(file.filename or "upload.bin").suffix or ".bin"
+    total_size = 0
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        temp_path = temp_file.name
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            temp_file.write(chunk)
+            total_size += len(chunk)
+    await file.close()
+    return temp_path, total_size
+
+
+def _estimate_pdf_part_ranges(pdf_path: str, file_size: int, max_part_bytes: int) -> List[tuple[int, int]]:
+    """Split a PDF into page ranges sized for Supabase's file limits."""
+    with fitz.open(pdf_path) as document:
+        total_pages = document.page_count
+
+    if total_pages <= 0:
+        return [(0, 0)]
+
+    estimated_parts = max(1, math.ceil(file_size / max(max_part_bytes, 1)))
+    pages_per_part = max(1, math.ceil(total_pages / estimated_parts))
+    ranges: List[tuple[int, int]] = []
+    for start_page in range(0, total_pages, pages_per_part):
+        end_page = min(total_pages - 1, start_page + pages_per_part - 1)
+        ranges.append((start_page, end_page))
+    return ranges
+
+
+def _split_pdf_to_supabase_parts(document_id: str, pdf_path: str, content_type: str) -> Dict[str, Any]:
+    """Split a large PDF into page-range parts and upload each part to Supabase Storage."""
+    ranges = _estimate_pdf_part_ranges(pdf_path, os.path.getsize(pdf_path), SUPABASE_MAX_PART_BYTES)
+    uploaded_parts: List[Dict[str, Any]] = []
+
+    with fitz.open(pdf_path) as source_document:
+        total_pages = source_document.page_count
+        for part_index, (start_page, end_page) in enumerate(ranges, start=1):
+            part_document = fitz.open()
+            part_document.insert_pdf(source_document, from_page=start_page, to_page=end_page)
+            part_bytes = part_document.tobytes(garbage=4, deflate=True)
+            part_document.close()
+
+            part_name = f"{document_id}_part_{part_index}.pdf"
+            storage_path = f"{document_id}/{part_name}"
+            upload_result = upload_bytes(
+                storage_path,
+                part_bytes,
+                content_type or "application/pdf",
+                SUPABASE_STORAGE_BUCKET,
+            )
+            if not upload_result:
+                raise RuntimeError(f"Failed to upload split PDF part {part_index}")
+
+            uploaded_parts.append(
+                {
+                    "storage_path": storage_path,
+                    "filename": part_name,
+                    "part_index": part_index,
+                    "start_page": start_page + 1,
+                    "end_page": end_page + 1,
+                    "file_size": len(part_bytes),
+                }
+            )
+
+    return {"parts": uploaded_parts, "page_count": total_pages}
+
+
+def _upload_document_to_storage(
+    document_id: str,
+    file_path: str,
+    filename: str,
+    content_type: str,
+    doc_type: str,
+) -> Dict[str, Any]:
+    """Upload either a single file or split PDF parts to Supabase Storage."""
+    file_size = os.path.getsize(file_path)
+    if doc_type == "pdf" and file_size > SUPABASE_SPLIT_THRESHOLD_BYTES:
+        split_payload = _split_pdf_to_supabase_parts(document_id, file_path, content_type)
+        return {
+            "storage_path": None,
+            "total_parts": len(split_payload["parts"]),
+            "processing_metadata": {
+                "storage_parts": split_payload["parts"],
+                "page_count": split_payload["page_count"],
+            },
+        }
+
+    sanitized_name = filename.replace("\\", "_").replace("/", "_")
+    storage_path = f"{document_id}/{sanitized_name}"
+    payload_bytes = Path(file_path).read_bytes()
+    upload_result = upload_bytes(
+        storage_path,
+        payload_bytes,
+        content_type or "application/octet-stream",
+        SUPABASE_STORAGE_BUCKET,
+    )
+    if not upload_result:
+        raise RuntimeError("Failed to upload file to Supabase Storage")
+
+    page_count = 0
+    if doc_type == "pdf":
+        with fitz.open(file_path) as document:
+            page_count = document.page_count
+
+    return {
+        "storage_path": storage_path,
+        "total_parts": 1,
+        "processing_metadata": {
+            "storage_parts": [
+                {
+                    "storage_path": storage_path,
+                    "filename": filename,
+                    "part_index": 1,
+                    "start_page": 1,
+                    "end_page": page_count or None,
+                    "file_size": file_size,
+                }
+            ],
+            "page_count": page_count,
+        },
+    }
+
+
+def _download_document_payload_to_temp(document: Dict[str, Any], emit: Optional[Any] = None) -> str:
+    """Download a document's storage payload and reassemble split PDFs on local disk."""
+    metadata = document.get("processing_metadata") or {}
+    storage_parts = list(metadata.get("storage_parts") or [])
+    if not storage_parts and document.get("storage_path"):
+        storage_parts = [
+            {
+                "storage_path": document["storage_path"],
+                "filename": document.get("filename"),
+                "part_index": 1,
+            }
+        ]
+    if not storage_parts:
+        raise RuntimeError("No storage payload found for this document")
+
+    temp_dir = tempfile.mkdtemp(prefix=f"doc-{document['id']}-")
+    downloaded_paths: List[str] = []
+    total_parts = max(1, len(storage_parts))
+
+    for index, part in enumerate(sorted(storage_parts, key=lambda item: item.get("part_index", 0)), start=1):
+        part_bytes = download_bytes(part.get("storage_path"), SUPABASE_STORAGE_BUCKET)
+        if not part_bytes:
+            raise RuntimeError(f"Failed to download storage part {index}")
+        part_path = Path(temp_dir) / (part.get("filename") or f"part-{index}.pdf")
+        part_path.write_bytes(part_bytes)
+        downloaded_paths.append(str(part_path))
+        if emit:
+            emit(
+                {
+                    "stage": "downloading",
+                    "progress": min(10, int((index / total_parts) * 10)),
+                    "part": index,
+                    "total_parts": total_parts,
+                }
+            )
+
+    if document.get("doc_type") != "pdf" or len(downloaded_paths) == 1:
+        return downloaded_paths[0]
+
+    merged_path = Path(temp_dir) / f"{document['id']}_merged.pdf"
+    merged_pdf = fitz.open()
+    try:
+        for index, part_path in enumerate(downloaded_paths, start=1):
+            with fitz.open(part_path) as part_document:
+                merged_pdf.insert_pdf(part_document)
+            if emit:
+                emit(
+                    {
+                        "stage": "assembling",
+                        "progress": 10 + min(10, int((index / len(downloaded_paths)) * 10)),
+                        "part": index,
+                        "total_parts": len(downloaded_paths),
+                    }
+                )
+        merged_pdf.save(str(merged_path), garbage=4, deflate=True)
+    finally:
+        merged_pdf.close()
+
+    return str(merged_path)
+
+
+def _process_pdf_job_sync(document: Dict[str, Any], emit: Optional[Any] = None) -> Dict[str, Any]:
+    """Run the SSE-driven PDF processing path entirely on the backend service."""
+    pdf_path = _download_document_payload_to_temp(document, emit=emit)
+    temp_dir = str(Path(pdf_path).parent)
+    collection_name = large_pdf_job_collection_name(document["id"])
+
+    try:
+        def _emit(payload: Dict[str, Any]) -> None:
+            if emit:
+                emit(payload)
+
+        pages = extract_large_pdf_pages(
+            pdf_path,
+            progress_callback=_emit,
+            batch_size=SSE_PAGE_BATCH_SIZE,
+        )
+        gc.collect()
+
+        chunks = chunk_large_pdf_document(
+            pages,
+            progress_callback=_emit,
+        )
+        decorated_chunks = []
+        normalized_title = (document.get("title") or document.get("filename") or "Document").strip()
+        for index, chunk in enumerate(chunks):
+            metadata = dict(chunk.get("metadata") or {})
+            metadata["document_id"] = document["id"]
+            metadata["document_title"] = normalized_title
+            metadata["source_file"] = normalized_title
+            metadata["job_id"] = document["id"]
+            decorated_chunks.append(
+                {
+                    "id": f"{document['id']}-{index}",
+                    "text": chunk["text"],
+                    "metadata": metadata,
+                }
+            )
+
+        result = embed_large_pdf_chunks(
+            decorated_chunks,
+            collection_name,
+            progress_callback=_emit,
+        )
+        gc.collect()
+        result["page_count"] = len(pages)
+        result["collection_name"] = collection_name
+        return result
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def _process_non_pdf_job_sync(document: Dict[str, Any], emit: Optional[Any] = None) -> Dict[str, Any]:
+    """Fallback synchronous processing path for non-PDF uploads."""
+    local_path = _download_document_payload_to_temp(document, emit=emit)
+    temp_dir = str(Path(local_path).parent)
+    try:
+        file_bytes = Path(local_path).read_bytes()
+        file_type = document.get("doc_type", "txt")
+        title = document.get("title") or document.get("filename") or "Document"
+
+        if emit:
+            emit({"stage": "extracting", "progress": 25})
+        result = DocumentProcessor.process_file(file_bytes, file_type)
+        if not result.get("success"):
+            raise RuntimeError(result.get("error") or "Failed to process document")
+
+        if emit:
+            emit({"stage": "chunking", "progress": 60, "chunks": len(result.get("chunks") or [])})
+        chunk_count = rag_engine.add_document_chunks(
+            document_id=document["id"],
+            document_title=title,
+            chunks=result["chunks"],
+            metadata={
+                "doc_type": file_type,
+                "job_id": document["id"],
+            },
+        )
+        if emit:
+            emit({"stage": "embedding", "progress": 90})
+
+        return {
+            "collection_name": rag_engine.collection_name,
+            "chunks_indexed": chunk_count,
+            "page_count": 0,
+        }
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def _document_collection_name(document: Dict[str, Any]) -> str:
+    """Resolve the Chroma collection name for a processed document."""
+    metadata = document.get("processing_metadata") or {}
+    return (
+        metadata.get("collection_name")
+        or (large_pdf_job_collection_name(document["id"]) if document.get("doc_type") == "pdf" else rag_engine.collection_name)
+    )
+
+
 # ==================== Auth Routes ====================
+
+@api_router.get("/ping")
+async def ping() -> Dict[str, str]:
+    """
+    Lightweight keep-alive endpoint for Render free tier.
+    Point UptimeRobot or a 10-minute frontend heartbeat here to reduce cold starts.
+    """
+    return {"status": "alive"}
 
 @api_router.post("/auth/register", response_model=TokenResponse)
 async def register(user_data: UserCreate):
@@ -1701,7 +2026,6 @@ async def process_document_background(
 
 @api_router.post("/documents/upload")
 async def upload_document(
-    background_tasks: BackgroundTasks,
     request: Request,
     file: UploadFile = File(...),
     title: str = Form(...),
@@ -1732,9 +2056,7 @@ async def upload_document(
     if not doc_type:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {extension}")
     
-    # Read file content
-    file_content = await file.read()
-    file_size = len(file_content)
+    temp_upload_path, file_size = await _write_upload_to_temp_file(file)
 
     existing_documents = await store.list_documents(limit=500)
     normalized_filename = _normalize_document_filename(filename)
@@ -1757,55 +2079,176 @@ async def upload_document(
             ),
         )
 
-    # Create document record
-    document = Document(
-        title=title,
-        description=description,
-        doc_type=doc_type,
-        filename=filename,
-        file_size=file_size,
-        uploaded_by=current_user["id"]
-    )
-
-    storage_path = None
-    if has_supabase_config():
-        sanitized_name = filename.replace("\\", "_").replace("/", "_")
-        storage_path = f"{document.id}/{sanitized_name}"
-        upload_result = await asyncio.to_thread(
-            upload_bytes,
-            storage_path,
-            file_content,
-            file.content_type or "application/octet-stream",
-            SUPABASE_STORAGE_BUCKET,
+    try:
+        document = Document(
+            title=title,
+            description=description,
+            doc_type=doc_type,
+            filename=filename,
+            file_size=file_size,
+            uploaded_by=current_user["id"],
         )
-        if not upload_result:
-            raise HTTPException(status_code=500, detail="Failed to upload file to Supabase Storage")
-    
-    doc_dict = document.model_dump()
-    doc_dict["created_at"] = doc_dict["created_at"].isoformat()
-    if doc_dict.get("indexed_at"):
-        doc_dict["indexed_at"] = doc_dict["indexed_at"].isoformat()
-    if storage_path:
-        doc_dict["storage_bucket"] = SUPABASE_STORAGE_BUCKET
-        doc_dict["storage_path"] = storage_path
-    
-    await store.create_document(doc_dict)
-    
-    # Process in background
-    background_tasks.add_task(
-        process_document_background,
-        document.id,
-        file_content,
-        doc_type,
-        title,
-        file_size,
-    )
-    
+
+        if has_supabase_config():
+            storage_payload = await asyncio.to_thread(
+                _upload_document_to_storage,
+                document.id,
+                temp_upload_path,
+                filename,
+                file.content_type or "application/octet-stream",
+                doc_type,
+            )
+            storage_bucket = SUPABASE_STORAGE_BUCKET
+        else:
+            page_count = 0
+            if doc_type == "pdf":
+                with fitz.open(temp_upload_path) as local_pdf:
+                    page_count = local_pdf.page_count
+            storage_payload = {
+                "storage_path": temp_upload_path,
+                "total_parts": 1,
+                "processing_metadata": {
+                    "local_source_path": temp_upload_path,
+                    "page_count": page_count,
+                    "storage_parts": [],
+                },
+            }
+            storage_bucket = "local"
+
+        doc_dict = document.model_dump()
+        doc_dict["created_at"] = doc_dict["created_at"].isoformat()
+        if doc_dict.get("indexed_at"):
+            doc_dict["indexed_at"] = doc_dict["indexed_at"].isoformat()
+        doc_dict["storage_bucket"] = storage_bucket
+        doc_dict["storage_path"] = storage_payload.get("storage_path")
+        doc_dict["total_parts"] = int(storage_payload.get("total_parts") or 1)
+        doc_dict["processing_metadata"] = storage_payload.get("processing_metadata") or {}
+
+        await store.create_document(doc_dict)
+    finally:
+        if has_supabase_config() and os.path.exists(temp_upload_path):
+            os.unlink(temp_upload_path)
+
     return {
-        "message": "Document uploaded and queued for processing",
+        "message": "Document uploaded. Start processing from the Render SSE endpoint.",
         "document_id": document.id,
-        "status": "pending"
+        "job_id": document.id,
+        "status": "uploaded",
+        "total_parts": int(doc_dict.get("total_parts") or 1),
+        "process_url": f"/api/process/{document.id}",
     }
+
+
+@api_router.get("/process/{job_id}")
+async def process_document_stream(
+    job_id: str,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """Synchronously process a document on Render and stream progress over SSE."""
+    current_user = await get_current_user(request, credentials)
+
+    if current_user["role"] not in ["faculty", "admin"]:
+        raise HTTPException(status_code=403, detail="Only faculty and admin can process documents")
+
+    document = await store.get_document(job_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    async def event_stream():
+        latest_document = await store.get_document(job_id)
+        if not latest_document:
+            yield _sse_event({"stage": "error", "progress": 100, "error": "Document not found"})
+            return
+
+        if latest_document.get("status") == "indexed":
+            yield _sse_event(
+                {
+                    "stage": "ready",
+                    "progress": 100,
+                    "job_id": job_id,
+                    "chunk_count": int(latest_document.get("chunk_count") or 0),
+                }
+            )
+            return
+
+        await store.update_document(job_id, {"status": "processing", "error_message": None})
+        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def emit(payload: Dict[str, Any]) -> None:
+            loop.call_soon_threadsafe(queue.put_nowait, payload)
+
+        emit({"stage": "starting", "progress": 0, "job_id": job_id})
+
+        async def runner() -> None:
+            try:
+                result = await asyncio.to_thread(
+                    _process_pdf_job_sync if latest_document.get("doc_type") == "pdf" else _process_non_pdf_job_sync,
+                    latest_document,
+                    emit,
+                )
+                updated_metadata = dict(latest_document.get("processing_metadata") or {})
+                updated_metadata["collection_name"] = result.get("collection_name")
+                if result.get("page_count") is not None:
+                    updated_metadata["page_count"] = result.get("page_count")
+
+                await store.update_document(
+                    job_id,
+                    {
+                        "status": "indexed",
+                        "chunk_count": int(result.get("chunks_indexed") or 0),
+                        "indexed_at": datetime.now(timezone.utc).isoformat(),
+                        "error_message": None,
+                        "processing_metadata": updated_metadata,
+                    },
+                )
+                emit(
+                    {
+                        "stage": "ready",
+                        "progress": 100,
+                        "job_id": job_id,
+                        "chunk_count": int(result.get("chunks_indexed") or 0),
+                        "collection_name": result.get("collection_name"),
+                    }
+                )
+            except Exception as exc:
+                logger.exception("SSE document processing failed for %s: %s", job_id, exc)
+                await store.update_document(
+                    job_id,
+                    {
+                        "status": "failed",
+                        "error_message": str(exc),
+                    },
+                )
+                emit(
+                    {
+                        "stage": "error",
+                        "progress": 100,
+                        "job_id": job_id,
+                        "error": str(exc),
+                    }
+                )
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, {"type": "__complete__"})
+
+        runner_task = asyncio.create_task(runner())
+
+        while True:
+            payload = await queue.get()
+            if payload.get("type") == "__complete__":
+                if runner_task.done():
+                    break
+                continue
+            yield _sse_event(payload)
+
+        await runner_task
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @api_router.post("/documents/url")
@@ -1931,7 +2374,9 @@ async def list_documents(
             uploaded_by=doc.get("uploaded_by"),
             created_at=doc["created_at"],
             indexed_at=doc.get("indexed_at"),
-            error_message=doc.get("error_message")
+            error_message=doc.get("error_message"),
+            total_parts=int(doc.get("total_parts") or 1),
+            processing_metadata=doc.get("processing_metadata") or {},
         )
         for doc in documents
     ]
@@ -1956,7 +2401,7 @@ async def preview_document_chunks(
 
     chunks = rag_engine.get_document_chunks_preview(document_id, limit=limit)
     if not chunks and document.get("doc_type") == "pdf":
-        chunks = preview_large_pdf_chunks(LARGE_PDF_COLLECTION_NAME, document_id, limit=limit)
+        chunks = preview_large_pdf_chunks(_document_collection_name(document), document_id, limit=limit)
     return DocumentChunkPreviewResponse(
         document_id=document["id"],
         title=document["title"],
@@ -1991,7 +2436,7 @@ async def delete_document(
     
     # Delete from RAG engine
     rag_engine.delete_document(document_id)
-    delete_large_pdf_document(LARGE_PDF_COLLECTION_NAME, document_id)
+    delete_large_pdf_document(_document_collection_name(document), document_id)
     
     # Delete from database
     await store.delete_document(document_id)
@@ -2025,7 +2470,7 @@ async def bulk_delete_documents(
             continue
 
         rag_engine.delete_document(document_id)
-        delete_large_pdf_document(LARGE_PDF_COLLECTION_NAME, document_id)
+        delete_large_pdf_document(_document_collection_name(document), document_id)
         await store.delete_document(document_id)
         deleted_count += 1
 

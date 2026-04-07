@@ -158,6 +158,8 @@ class AppStore:
                 "category",
                 "source_url",
                 "verified_on",
+                "total_parts",
+                "processing_metadata",
             }
             payload = {key: value for key, value in record.items() if key in allowed_keys}
             await self._run_supabase(lambda: self.supabase.table("documents").insert(payload).execute())
@@ -187,6 +189,8 @@ class AppStore:
                 "category",
                 "source_url",
                 "verified_on",
+                "total_parts",
+                "processing_metadata",
             }
             payload = {key: value for key, value in payload.items() if key in allowed_keys}
             response = await self._run_supabase(

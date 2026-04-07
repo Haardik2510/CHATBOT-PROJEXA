@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import concurrent.futures
+import gc
 import hashlib
 import json
 import logging
@@ -42,13 +43,14 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 GEMINI_MODEL = "gemini-1.5-flash"
 RRF_K = 60
-PAGE_BATCH_SIZE = 10
-EMBED_BATCH_SIZE = 32
+PAGE_BATCH_SIZE = 5
+EMBED_BATCH_SIZE = 16
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 100
 MIN_CHUNK_CHARS = 100
 RETRIEVE_TOP_K = 6
 RERANK_TOP_K = 3
+QUERY_EMBED_PREFIX = "Represent this sentence for searching: "
 
 _EMBEDDER: Optional[Any] = None
 _RERANKER: Optional[Any] = None
@@ -64,6 +66,7 @@ class PageRecord:
     images: List[Dict]
     image_descriptions: List[str]
     is_text_page: bool
+    heading_candidates: List[Tuple[str, float]]
 
 
 @dataclass
@@ -136,6 +139,28 @@ def _extract_heading(candidate_lines: Sequence[str]) -> str:
         if title_case or compact.isupper():
             return compact
     return "Document Content"
+
+
+def _extract_heading_from_font_candidates(candidates: Sequence[Tuple[str, float]]) -> str:
+    ranked = sorted(
+        (
+            (_clean_line(text), float(size))
+            for text, size in candidates
+            if _clean_line(text)
+        ),
+        key=lambda item: (item[1], len(item[0])),
+        reverse=True,
+    )
+    for text, _size in ranked:
+        if len(text) < 8 or len(text) > 160:
+            continue
+        if text.endswith("."):
+            continue
+        alpha = sum(ch.isalpha() for ch in text)
+        if alpha < 6:
+            continue
+        return text
+    return _extract_heading([text for text, _size in candidates])
 
 
 def _tokenize_for_bm25(text: str) -> List[str]:
@@ -278,6 +303,16 @@ class HybridIndexStore:
         if self.bm25_path.exists():
             self.bm25_path.unlink()
 
+    def merge_records(self, chunks: Sequence[ChunkRecord]) -> None:
+        existing = {record["id"]: record for record in self.load_records()}
+        for chunk in chunks:
+            existing[chunk.id] = {"id": chunk.id, "text": chunk.text, "metadata": chunk.metadata}
+        merged = [
+            ChunkRecord(id=record["id"], text=record["text"], metadata=record.get("metadata") or {})
+            for record in existing.values()
+        ]
+        self.write_records(merged)
+
     def load_records(self) -> List[Dict]:
         if not self.records_path.exists():
             return []
@@ -354,6 +389,7 @@ def _extract_page_batch_worker(pdf_path: str, start_page: int, end_page: int, im
         top_lines: List[str] = []
         bottom_lines: List[str] = []
         candidate_lines: List[str] = []
+        heading_candidates: List[Tuple[str, float]] = []
 
         sorted_blocks = sorted(text_dict.get("blocks", []), key=lambda block: (block["bbox"][1], block["bbox"][0]))
         for block in sorted_blocks:
@@ -361,12 +397,14 @@ def _extract_page_batch_worker(pdf_path: str, start_page: int, end_page: int, im
                 continue
             block_lines: List[str] = []
             for line in block.get("lines", []):
-                spans = [span.get("text", "") for span in line.get("spans", []) if span.get("text", "").strip()]
-                joined = _clean_line("".join(spans))
+                spans = [span for span in line.get("spans", []) if span.get("text", "").strip()]
+                joined = _clean_line("".join(span.get("text", "") for span in spans))
                 if not joined:
                     continue
                 block_lines.append(joined)
                 candidate_lines.append(joined)
+                max_font_size = max((float(span.get("size", 0.0) or 0.0) for span in spans), default=0.0)
+                heading_candidates.append((joined, max_font_size))
                 if len(top_lines) < 2:
                     top_lines.append(joined)
                 bottom_lines = (bottom_lines + [joined])[-2:]
@@ -405,6 +443,7 @@ def _extract_page_batch_worker(pdf_path: str, start_page: int, end_page: int, im
                 "top_lines": top_lines,
                 "bottom_lines": bottom_lines,
                 "candidate_lines": candidate_lines,
+                "heading_candidates": heading_candidates,
                 "images": page_images,
                 "is_text_page": len(_normalize_text(full_text)) >= 50,
             }
@@ -446,7 +485,7 @@ def _apply_cleaning_to_page(raw_page: Dict, repeated_margin_lines: set[str]) -> 
         cleaned_lines.append(line)
 
     cleaned_text = _strip_common_noise("\n".join(cleaned_lines))
-    section_heading = _extract_heading(raw_page.get("candidate_lines", []))
+    section_heading = _extract_heading_from_font_candidates(raw_page.get("heading_candidates", []))
     return PageRecord(
         page_number=raw_page["page_number"],
         source_file=raw_page["source_file"],
@@ -456,10 +495,16 @@ def _apply_cleaning_to_page(raw_page: Dict, repeated_margin_lines: set[str]) -> 
         images=raw_page.get("images", []),
         image_descriptions=[],
         is_text_page=raw_page.get("is_text_page", False) and bool(cleaned_text),
+        heading_candidates=list(raw_page.get("heading_candidates", [])),
     )
 
 
-def extract_and_clean_pdf(pdf_path: str) -> List[Dict]:
+def extract_and_clean_pdf(
+    pdf_path: str,
+    *,
+    progress_callback: Optional[Any] = None,
+    batch_size: int = PAGE_BATCH_SIZE,
+) -> List[Dict]:
     """Extract a PDF page by page, clean noise, and add Gemini image descriptions."""
     _ensure_directories()
     pdf_path = str(Path(pdf_path).expanduser().resolve())
@@ -477,18 +522,35 @@ def extract_and_clean_pdf(pdf_path: str) -> List[Dict]:
     raw_pages: List[Dict] = []
     max_workers = max(1, min((os.cpu_count() or 2), 4))
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        for start_page, end_page in _iter_page_batches(total_pages, PAGE_BATCH_SIZE):
+        total_batches = max(1, math.ceil(total_pages / max(batch_size, 1)))
+        completed_batches = 0
+        for start_page, end_page in _iter_page_batches(total_pages, batch_size):
             futures.append(executor.submit(_extract_page_batch_worker, pdf_path, start_page, end_page, str(image_dir)))
 
         for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Extracting PDF batches"):
             raw_pages.extend(future.result())
+            gc.collect()
+            completed_batches += 1
+            if progress_callback:
+                progress_callback(
+                    {
+                        "stage": "extracting",
+                        "progress": min(45, int((completed_batches / total_batches) * 45)),
+                        "batch": completed_batches,
+                        "total_batches": total_batches,
+                    }
+                )
 
     raw_pages.sort(key=lambda page: page["page_number"])
     repeated_margin_lines = _detect_repeated_margin_lines(raw_pages)
     cleaned_pages = [_apply_cleaning_to_page(page, repeated_margin_lines) for page in raw_pages]
 
     gemini = GeminiImageAnalyzer()
-    for page in tqdm(cleaned_pages, desc="Analyzing page images", disable=not gemini.is_available):
+    total_pages_to_analyze = max(1, len(cleaned_pages))
+    for index, page in enumerate(
+        tqdm(cleaned_pages, desc="Analyzing page images", disable=not gemini.is_available),
+        start=1,
+    ):
         if not page.images:
             continue
         for image in page.images:
@@ -497,6 +559,14 @@ def extract_and_clean_pdf(pdf_path: str) -> List[Dict]:
                 description = gemini.describe(Path(image_path).read_bytes(), page.page_number, page.source_file)
                 if description:
                     page.image_descriptions.append(description)
+        if progress_callback and gemini.is_available:
+            progress_callback(
+                {
+                    "stage": "extracting",
+                    "progress": min(55, 45 + int((index / total_pages_to_analyze) * 10)),
+                    "page": page.page_number,
+                }
+            )
 
     filtered_pages = [page for page in cleaned_pages if page.is_text_page or page.image_descriptions]
     return [asdict(page) for page in filtered_pages]
@@ -534,14 +604,19 @@ def _sentence_safe_chunk_splitter():
     )
 
 
-def chunk_document(pages: List[Dict]) -> List[Dict]:
+def chunk_document(
+    pages: List[Dict],
+    *,
+    progress_callback: Optional[Any] = None,
+) -> List[Dict]:
     """Chunk documents semantically and attach page-level metadata to every chunk."""
     splitter = _sentence_safe_chunk_splitter()
     chunks: List[ChunkRecord] = []
     source_file = Path(pages[0]["source_file"]).name if pages else "document.pdf"
     chunk_index = 0
 
-    for page in pages:
+    total_pages = max(1, len(pages))
+    for page_index, page in enumerate(pages, start=1):
         for section_heading, section_text in _prepare_semantic_sections(page):
             if len(section_text.strip()) < MIN_CHUNK_CHARS:
                 continue
@@ -569,6 +644,15 @@ def chunk_document(pages: List[Dict]) -> List[Dict]:
                     )
                 )
                 chunk_index += 1
+        if progress_callback:
+            progress_callback(
+                {
+                    "stage": "chunking",
+                    "progress": min(70, 55 + int((page_index / total_pages) * 15)),
+                    "page": page.get("page_number"),
+                    "chunks": len(chunks),
+                }
+            )
 
     return [{"id": chunk.id, "text": chunk.text, "metadata": chunk.metadata} for chunk in chunks]
 
@@ -618,7 +702,12 @@ def _batched(items: Sequence, batch_size: int) -> Generator[Sequence, None, None
         yield items[start : start + batch_size]
 
 
-def embed_and_store(chunks: List[Dict], collection_name: str) -> Dict:
+def embed_and_store(
+    chunks: List[Dict],
+    collection_name: str,
+    *,
+    progress_callback: Optional[Any] = None,
+) -> Dict:
     """Embed chunks in batches of 32 and persist them to Chroma."""
     if not chunks:
         raise ValueError("No chunks were produced for embedding")
@@ -630,9 +719,11 @@ def embed_and_store(chunks: List[Dict], collection_name: str) -> Dict:
     model_name = "BAAI/bge-m3"
 
     records = [ChunkRecord(id=chunk["id"], text=chunk["text"], metadata=chunk["metadata"]) for chunk in chunks]
-    sidecar.write_records(records)
+    sidecar.merge_records(records)
 
-    for batch in tqdm(list(_batched(records, EMBED_BATCH_SIZE)), desc="Embedding chunks"):
+    all_batches = list(_batched(records, EMBED_BATCH_SIZE))
+    total_batches = max(1, len(all_batches))
+    for batch_index, batch in enumerate(tqdm(all_batches, desc="Embedding chunks"), start=1):
         texts = [record.text for record in batch]
         cache_hits = cache.get_many(texts, model_name)
         missing_texts = [text for text in texts if _chunk_hash(text) not in cache_hits]
@@ -657,6 +748,15 @@ def embed_and_store(chunks: List[Dict], collection_name: str) -> Dict:
             metadatas=[record.metadata for record in batch],
             embeddings=[cache_hits[_chunk_hash(text)] for text in texts],
         )
+        if progress_callback:
+            progress_callback(
+                {
+                    "stage": "embedding",
+                    "progress": min(95, 70 + int((batch_index / total_batches) * 25)),
+                    "batch": batch_index,
+                    "total_batches": total_batches,
+                }
+            )
 
     return {"collection_name": _slugify(collection_name), "chunks_indexed": len(records), "storage_path": str(DEFAULT_CHROMA_DIR)}
 
@@ -672,7 +772,14 @@ def hybrid_retrieve(query: str, collection_name: str) -> Dict:
     sidecar = HybridIndexStore(collection_name)
     bm25, bm25_records = sidecar.load_or_build_bm25()
 
-    query_vector = embedder.encode([query], batch_size=1, normalize_embeddings=True, convert_to_numpy=True, show_progress_bar=False)[0].tolist()
+    query_text = f"{QUERY_EMBED_PREFIX}{query.strip()}"
+    query_vector = embedder.encode(
+        [query_text],
+        batch_size=1,
+        normalize_embeddings=True,
+        convert_to_numpy=True,
+        show_progress_bar=False,
+    )[0].tolist()
     dense = collection.query(
         query_embeddings=[query_vector],
         n_results=max(RETRIEVE_TOP_K * 2, 12),
@@ -1029,6 +1136,11 @@ def index_pdf_document(
         document_title=document_title,
     )
     return embed_and_store(decorated_chunks, collection_name)
+
+
+def job_collection_name(job_id: str) -> str:
+    """Build a stable per-job collection name."""
+    return _slugify(f"document-job-{job_id}")
 
 
 def _index_pdf(pdf_path: str, collection_name: str) -> Dict:

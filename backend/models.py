@@ -60,6 +60,8 @@ class Document(DocumentBase):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     indexed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    total_parts: int = 1
+    processing_metadata: dict = Field(default_factory=dict)
 
 
 class DocumentResponse(BaseModel):
@@ -75,6 +77,8 @@ class DocumentResponse(BaseModel):
     created_at: str
     indexed_at: Optional[str]
     error_message: Optional[str] = None
+    total_parts: int = 1
+    processing_metadata: dict = Field(default_factory=dict)
 
 
 class DocumentChunkPreview(BaseModel):
