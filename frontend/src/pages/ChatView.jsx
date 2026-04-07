@@ -5,6 +5,7 @@ import axios from "axios";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { ScrollArea } from "../components/ui/scroll-area";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import {
   Mic,
   MicOff,
@@ -17,6 +18,9 @@ import {
   FileText,
   Sparkles,
   RotateCcw,
+  Download,
+  Eye,
+  Pencil,
   ScanSearch,
   FileStack,
 } from "lucide-react";
@@ -67,6 +71,11 @@ export default function ChatView() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState(null);
   const [sessionId, setSessionId] = useState(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingMessageIndex, setEditingMessageIndex] = useState(null);
+  const [editingArtifact, setEditingArtifact] = useState(null);
+  const [editedPdfText, setEditedPdfText] = useState("");
+  const [isRegeneratingPdf, setIsRegeneratingPdf] = useState(false);
   const messagesEndRef = useRef(null);
   const recognitionRef = useRef(null);
   const synthRef = useRef(window.speechSynthesis);
@@ -222,7 +231,7 @@ export default function ChatView() {
         answer_mode: DATABASE_MODE,
       });
 
-      const { response: aiResponse, sources, images, session_id } = response.data;
+      const { response: aiResponse, sources, images, artifacts, session_id } = response.data;
 
       if (!sessionId) {
         setSessionId(session_id);
@@ -233,6 +242,7 @@ export default function ChatView() {
         content: aiResponse,
         sources: sources || [],
         images: images || [],
+        artifacts: artifacts || [],
         timestamp: new Date().toISOString(),
         answerMode: DATABASE_MODE,
       };
@@ -252,6 +262,7 @@ export default function ChatView() {
           content: fallbackText,
           sources: [],
           images: [],
+          artifacts: [],
           timestamp: new Date().toISOString(),
           answerMode: DATABASE_MODE,
         },
@@ -272,8 +283,78 @@ export default function ChatView() {
   const clearChat = () => {
     setMessages([]);
     setSessionId(null);
+    setEditDialogOpen(false);
+    setEditingMessageIndex(null);
+    setEditingArtifact(null);
+    setEditedPdfText("");
     synthRef.current.cancel();
     setIsSpeaking(false);
+  };
+
+  const openPdf = (artifact) => {
+    if (!artifact?.data_url) {
+      toast.error("The PDF is not available yet.");
+      return;
+    }
+    window.open(artifact.data_url, "_blank", "noopener,noreferrer");
+  };
+
+  const downloadPdf = (artifact) => {
+    if (!artifact?.data_url) {
+      toast.error("The PDF is not available yet.");
+      return;
+    }
+
+    const link = document.createElement("a");
+    link.href = artifact.data_url;
+    link.download = artifact.filename || "scholar-pulse-export.pdf";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const openEditPdfDialog = (messageIndex, artifact) => {
+    setEditingMessageIndex(messageIndex);
+    setEditingArtifact(artifact);
+    setEditedPdfText(artifact?.text_content || "");
+    setEditDialogOpen(true);
+  };
+
+  const regeneratePdf = async () => {
+    if (editingMessageIndex === null || !editingArtifact) return;
+    if (!editedPdfText.trim()) {
+      toast.error("Add some text before regenerating the PDF.");
+      return;
+    }
+
+    setIsRegeneratingPdf(true);
+    try {
+      const response = await axios.post(`${API}/chat/export-pdf`, {
+        content: editedPdfText.trim(),
+        title: editingArtifact.title,
+        generated_from_role: editingArtifact.generated_from_role || "assistant",
+      });
+      const refreshedArtifact = response.data?.artifact;
+      if (!refreshedArtifact) {
+        throw new Error("Missing regenerated PDF artifact");
+      }
+
+      setMessages((prev) =>
+        prev.map((message, index) =>
+          index === editingMessageIndex
+            ? { ...message, artifacts: [refreshedArtifact] }
+            : message
+        )
+      );
+      setEditingArtifact(refreshedArtifact);
+      setEditDialogOpen(false);
+      toast.success("PDF updated successfully.");
+    } catch (error) {
+      console.error("PDF regeneration error:", error);
+      toast.error(error?.response?.data?.detail || "Could not update the PDF.");
+    } finally {
+      setIsRegeneratingPdf(false);
+    }
   };
 
   const renderAssistantContent = (message) => {
@@ -464,6 +545,56 @@ export default function ChatView() {
                         </div>
                       ) : null}
 
+                      {message.role === "assistant" && message.artifacts?.length > 0 ? (
+                        <div className="mt-5 space-y-3">
+                          {message.artifacts.map((artifact, artifactIndex) => (
+                            <div
+                              key={`${index}-artifact-${artifactIndex}`}
+                              className="rounded-[18px] border border-[#d7dff2] bg-white/86 p-4 shadow-[0_14px_24px_rgba(11,25,60,0.05)]"
+                            >
+                              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                <div>
+                                  <p className="section-eyebrow">PDF Export</p>
+                                  <p className="mt-1 text-sm font-semibold text-[#0b193c]">{artifact.title}</p>
+                                  <p className="mt-1 text-xs text-[#7181a6]">{artifact.filename}</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => openPdf(artifact)}
+                                    className="btn-secondary h-10"
+                                  >
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    View
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => openEditPdfDialog(index, artifact)}
+                                    className="btn-secondary h-10"
+                                  >
+                                    <Pencil className="mr-2 h-4 w-4" />
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => downloadPdf(artifact)}
+                                    className="btn-primary h-10"
+                                  >
+                                    <Download className="mr-2 h-4 w-4" />
+                                    Download
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+
                       {message.sources?.length ? (
                         <div className="mt-5 border-t border-[#e5eaf7] pt-4">
                           <div className="mb-3 flex items-center gap-2">
@@ -589,6 +720,33 @@ export default function ChatView() {
           </p>
         </div>
       </motion.div>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-2xl border-[#d7dff2] bg-white/96">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-[#0b193c]">Edit PDF Content</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-[#5c6b8d]">
+              Update the text below and regenerate the PDF when you're ready.
+            </p>
+            <Textarea
+              value={editedPdfText}
+              onChange={(event) => setEditedPdfText(event.target.value)}
+              className="input-field min-h-[280px]"
+              placeholder="Edit the PDF content here..."
+            />
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="ghost" onClick={() => setEditDialogOpen(false)} className="btn-secondary">
+                Cancel
+              </Button>
+              <Button type="button" onClick={regeneratePdf} className="btn-primary" disabled={isRegeneratingPdf}>
+                {isRegeneratingPdf ? "Updating..." : "Update PDF"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
