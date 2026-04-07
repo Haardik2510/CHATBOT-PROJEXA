@@ -11,10 +11,10 @@ import UsersView from "./pages/UsersView";
 import "./App.css";
 
 const LoadingScreen = () => (
-  <div className="min-h-screen bg-[#12151a] flex items-center justify-center">
+  <div className="min-h-screen scholar-hero flex items-center justify-center">
     <div className="text-center">
-      <div className="w-12 h-12 border-4 border-[#FFBA00] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-      <p className="text-white font-heading">Loading...</p>
+      <div className="mx-auto mb-4 h-14 w-14 rounded-full border-4 border-white/30 border-t-white animate-spin" />
+      <p className="font-heading text-white">Entering Scholar Pulse...</p>
     </div>
   </div>
 );
@@ -97,9 +97,11 @@ function App() {
           position="top-right"
           toastOptions={{
             style: {
-              background: "#1a1e26",
-              border: "1px solid #2a3142",
-              color: "#fafafa",
+              background: "rgba(255,255,255,0.86)",
+              border: "1px solid rgba(215,223,242,0.95)",
+              color: "#0b193c",
+              backdropFilter: "blur(18px)",
+              boxShadow: "0 24px 40px rgba(11,25,60,0.08)",
             },
           }}
         />

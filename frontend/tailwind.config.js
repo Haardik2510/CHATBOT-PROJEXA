@@ -8,37 +8,36 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // K.R. Mangalam University Theme
-        background: '#12151a',
-        surface: '#1a1e26',
-        'surface-hover': '#1e2330',
+        background: '#f8f9fa',
+        surface: '#ffffff',
+        'surface-hover': '#eef3ff',
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
         foreground: 'hsl(var(--foreground))',
-        krmu: {
-          gold: '#FFBA00',
-          'gold-dark': '#e5a800',
-          'gold-light': '#ffd700',
-          dark: '#12151a',
-          'dark-light': '#1a1e26',
-          'dark-lighter': '#1e2330',
+        scholar: {
+          navy: '#0b193c',
+          'navy-soft': '#15295e',
+          blue: '#6294ff',
+          red: '#b6171e',
+          slate: '#f8f9fa',
+          ink: '#23314f',
         },
         primary: {
-          DEFAULT: '#FFBA00',
-          hover: '#e5a800',
-          foreground: '#12151a'
+          DEFAULT: '#0b193c',
+          hover: '#15295e',
+          foreground: '#ffffff'
         },
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
           foreground: 'hsl(var(--secondary-foreground))'
         },
         destructive: {
-          DEFAULT: '#ef4444',
+          DEFAULT: '#b6171e',
           foreground: 'hsl(var(--destructive-foreground))'
         },
-        success: '#22c55e',
-        warning: '#eab308',
+        success: '#16a34a',
+        warning: '#6294ff',
         muted: {
           DEFAULT: 'hsl(var(--muted))',
           foreground: 'hsl(var(--muted-foreground))'
@@ -74,7 +73,7 @@ module.exports = {
         }
       },
       fontFamily: {
-        heading: ['Outfit', 'sans-serif'],
+        heading: ['Manrope', 'sans-serif'],
         body: ['Manrope', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace']
       },
@@ -116,6 +115,14 @@ module.exports = {
         shimmer: {
           '0%': { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0' }
+        },
+        pulsebeam: {
+          '0%, 100%': { opacity: '0.35', transform: 'scale(0.98)' },
+          '50%': { opacity: '0.8', transform: 'scale(1.02)' }
+        },
+        breathe: {
+          '0%, 100%': { transform: 'translateY(0px) rotate(0deg)' },
+          '50%': { transform: 'translateY(-10px) rotate(2deg)' }
         }
       },
       animation: {
@@ -126,7 +133,9 @@ module.exports = {
         'fade-in': 'fade-in 0.3s ease-out',
         'scale-in': 'scale-in 0.3s ease-out',
         'slide-left': 'slide-left 0.4s ease-out',
-        shimmer: 'shimmer 2s linear infinite'
+        shimmer: 'shimmer 2s linear infinite',
+        pulsebeam: 'pulsebeam 3.2s ease-in-out infinite',
+        breathe: 'breathe 6s ease-in-out infinite'
       }
     }
   },

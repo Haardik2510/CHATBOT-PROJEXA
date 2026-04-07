@@ -29,11 +29,11 @@ import { API } from "../lib/api";
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-[#1a1e26] border border-[#2a3142] rounded-lg px-3 py-2 shadow-xl">
-        <p className="text-white font-medium text-sm">{label}</p>
+      <div className="rounded-[12px] border border-[#d7dff2] bg-white/92 px-3 py-2 shadow-[0_18px_28px_rgba(11,25,60,0.12)] backdrop-blur-xl">
+        <p className="text-sm font-semibold text-[#0b193c]">{label}</p>
         {payload.map((entry, index) => (
-          <p key={index} className="text-sm text-[#9ca3af]">
-            {entry.name}: <span className="text-[#FFBA00] font-mono">{entry.value}</span>
+          <p key={index} className="text-sm text-[#5c6b8d]">
+            {entry.name}: <span className="font-mono text-[#6294ff]">{entry.value}</span>
           </p>
         ))}
       </div>
@@ -86,16 +86,16 @@ export default function AnalyticsView() {
   }
 
   const statCards = [
-    { label: "Total Queries", value: overview?.total_queries || 0, icon: MessageSquare, color: "text-blue-400", bg: "bg-blue-500/10" },
-    { label: "Total Documents", value: overview?.total_documents || 0, icon: FileText, color: "text-green-400", bg: "bg-green-500/10" },
-    { label: "Total Users", value: overview?.total_users || 0, icon: Users, color: "text-purple-400", bg: "bg-purple-500/10" },
-    { label: "Queries Today", value: overview?.queries_today || 0, icon: TrendingUp, color: "text-[#FFBA00]", bg: "bg-[#FFBA00]/10" },
-    { label: "Avg Response Time", value: `${Math.round(overview?.avg_response_time_ms || 0)}ms`, icon: Clock, color: "text-cyan-400", bg: "bg-cyan-500/10" },
-    { label: "Voice Queries", value: `${Math.round(overview?.voice_query_percentage || 0)}%`, icon: Mic, color: "text-pink-400", bg: "bg-pink-500/10" },
+    { label: "AI Citation Score", value: overview?.total_queries || 0, icon: MessageSquare, color: "text-[#6294ff]", bg: "bg-[#6294ff]/10" },
+    { label: "Library Assets", value: overview?.total_documents || 0, icon: FileText, color: "text-emerald-400", bg: "bg-emerald-500/10" },
+    { label: "Scholar Reach", value: overview?.total_users || 0, icon: Users, color: "text-[#f4a4a8]", bg: "bg-[#b6171e]/10" },
+    { label: "Today’s Activity", value: overview?.queries_today || 0, icon: TrendingUp, color: "text-white", bg: "bg-white/10" },
+    { label: "Pulse Speed", value: `${Math.round(overview?.avg_response_time_ms || 0)}ms`, icon: Clock, color: "text-[#b9ceff]", bg: "bg-[#6294ff]/10" },
+    { label: "Voice Sessions", value: `${Math.round(overview?.voice_query_percentage || 0)}%`, icon: Mic, color: "text-[#ffb8bd]", bg: "bg-[#b6171e]/10" },
   ];
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
+    <div className="scholar-page space-y-6 p-4 md:p-6">
       {/* Header */}
       <motion.div 
         initial={{ opacity: 0, y: -10 }}
@@ -103,11 +103,12 @@ export default function AnalyticsView() {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-2xl font-heading font-bold text-white">
-            Analytics Dashboard
+          <p className="section-eyebrow">Scholar Analytics</p>
+          <h1 className="page-title mt-2">
+            Insight dashboard
           </h1>
-          <p className="text-sm text-[#6b7280] mt-1">
-            Monitor chatbot usage and performance
+          <p className="mt-2 text-sm text-[#5c6b8d]">
+            Track archive usage, response quality, and interaction momentum.
           </p>
         </div>
         <Button
@@ -115,7 +116,7 @@ export default function AnalyticsView() {
           size="sm"
           onClick={fetchAnalytics}
           data-testid="refresh-analytics-btn"
-          className="text-[#9ca3af] hover:text-white hover:bg-[#1e2330]"
+          className="btn-secondary h-11"
         >
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
@@ -130,10 +131,11 @@ export default function AnalyticsView() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className="stat-card"
+            className="stat-card relative overflow-hidden"
           >
+            <div className="absolute inset-x-0 top-0 h-1 rounded-t-[12px] bg-[linear-gradient(90deg,#6294ff,#ffffff,#b6171e)] opacity-90" />
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[#6b7280] text-xs">{stat.label}</span>
+              <span className="text-xs uppercase tracking-[0.18em] text-white/58">{stat.label}</span>
               <div className={`w-8 h-8 ${stat.bg} rounded-lg flex items-center justify-center`}>
                 <stat.icon className={`w-4 h-4 ${stat.color}`} />
               </div>
@@ -153,7 +155,7 @@ export default function AnalyticsView() {
           className="card-surface p-6"
         >
           <h3 className="text-lg font-heading font-semibold text-white mb-4">
-            Query Trend (Last 7 Days)
+            AI Citation Score
           </h3>
           <div className="h-[250px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -174,10 +176,10 @@ export default function AnalyticsView() {
                   type="monotone"
                   dataKey="query_count"
                   name="Queries"
-                  stroke="#FFBA00"
+                  stroke="#6294ff"
                   strokeWidth={3}
-                  dot={{ fill: "#FFBA00", strokeWidth: 0, r: 4 }}
-                  activeDot={{ r: 6, fill: "#FFBA00" }}
+                  dot={{ fill: "#6294ff", strokeWidth: 0, r: 4 }}
+                  activeDot={{ r: 6, fill: "#6294ff" }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -192,7 +194,7 @@ export default function AnalyticsView() {
           className="card-surface p-6"
         >
           <h3 className="text-lg font-heading font-semibold text-white mb-4">
-            Active Users (Last 7 Days)
+            Community Participation
           </h3>
           <div className="h-[250px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -209,7 +211,7 @@ export default function AnalyticsView() {
                 />
                 <YAxis stroke="#6b7280" fontSize={12} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="unique_users" name="Users" fill="#FFBA00" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="unique_users" name="Users" fill="#b6171e" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -223,7 +225,7 @@ export default function AnalyticsView() {
           className="card-surface p-6 md:col-span-2"
         >
           <h3 className="text-lg font-heading font-semibold text-white mb-4">
-            Average Response Time (Last 7 Days)
+            Scholar Pulse Speed
           </h3>
           <div className="h-[250px]">
             <ResponsiveContainer width="100%" height="100%">

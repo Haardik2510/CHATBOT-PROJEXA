@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,145 +6,233 @@
 
 @layer base {
   :root {
-    /* K.R. Mangalam University Theme */
-    --background: 220 15% 8%;
-    --foreground: 0 0% 98%;
-    --card: 220 15% 10%;
-    --card-foreground: 0 0% 98%;
-    --popover: 220 15% 10%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 44 100% 50%;
-    --primary-foreground: 220 15% 8%;
-    --secondary: 220 10% 15%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 220 10% 15%;
-    --muted-foreground: 220 5% 64%;
-    --accent: 220 10% 15%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 50%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 220 10% 18%;
-    --input: 220 10% 18%;
-    --ring: 44 100% 50%;
-    --chart-1: 44 100% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --radius: 0.5rem;
-    --sidebar-background: 220 15% 6%;
-    --sidebar-foreground: 220 5% 90%;
-    --sidebar-primary: 44 100% 50%;
-    --sidebar-primary-foreground: 220 15% 8%;
-    --sidebar-accent: 220 10% 15%;
-    --sidebar-accent-foreground: 220 5% 90%;
-    --sidebar-border: 220 10% 18%;
-    --sidebar-ring: 44 100% 50%;
+    --background: 210 20% 98%;
+    --foreground: 221 69% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 221 69% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 221 69% 14%;
+    --primary: 221 69% 14%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 40% 96%;
+    --secondary-foreground: 221 56% 21%;
+    --muted: 220 33% 96%;
+    --muted-foreground: 218 23% 43%;
+    --accent: 221 100% 69%;
+    --accent-foreground: 221 69% 14%;
+    --destructive: 357 79% 40%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 26% 89%;
+    --input: 220 30% 92%;
+    --ring: 221 100% 69%;
+    --chart-1: 221 69% 14%;
+    --chart-2: 221 100% 69%;
+    --chart-3: 357 79% 40%;
+    --chart-4: 210 48% 43%;
+    --chart-5: 152 50% 34%;
+    --radius: 12px;
+    --sidebar-background: 221 69% 14%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 221 100% 69%;
+    --sidebar-primary-foreground: 221 69% 14%;
+    --sidebar-accent: 220 45% 20%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 220 45% 24%;
+    --sidebar-ring: 221 100% 69%;
   }
-}
 
-@layer base {
   * {
     @apply border-border;
   }
 
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
   body {
-    @apply bg-[#12151a] text-[#fafafa] font-body antialiased;
+    @apply font-body antialiased text-[#0b193c];
     margin: 0;
+    background:
+      radial-gradient(circle at top left, rgba(98, 148, 255, 0.12), transparent 28%),
+      radial-gradient(circle at top right, rgba(182, 23, 30, 0.08), transparent 24%),
+      linear-gradient(180deg, #ffffff 0%, #f8f9fa 45%, #eef3ff 100%);
+    letter-spacing: -0.02em;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-heading;
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading font-extrabold tracking-[-0.02em];
   }
 
-  code, pre {
+  code,
+  pre {
     @apply font-mono;
   }
 }
 
 @layer components {
+  .scholar-page {
+    @apply h-full min-h-0 overflow-hidden bg-transparent;
+  }
+
+  .scholar-panel {
+    @apply rounded-[12px] shadow-[0_24px_40px_rgba(11,25,60,0.08)] backdrop-blur-xl;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.75);
+  }
+
+  .scholar-panel-strong {
+    @apply rounded-[12px] border border-[#d8e1f4] shadow-[0_24px_40px_rgba(11,25,60,0.1)] backdrop-blur-xl;
+    background: rgba(255, 255, 255, 0.92);
+  }
+
+  .scholar-hero {
+    background:
+      radial-gradient(circle at 20% 20%, rgba(98, 148, 255, 0.22), transparent 24%),
+      radial-gradient(circle at 78% 28%, rgba(182, 23, 30, 0.14), transparent 18%),
+      linear-gradient(160deg, rgba(11, 25, 60, 0.98), rgba(13, 40, 96, 0.88));
+  }
+
   .btn-primary {
-    @apply bg-[#FFBA00] hover:bg-[#e5a800] text-[#12151a] font-semibold px-4 py-2 rounded-md transition-all duration-200;
+    @apply rounded-full bg-[#b6171e] px-5 py-2.5 font-semibold text-white shadow-[0_12px_25px_rgba(182,23,30,0.24)] transition-all duration-300 hover:scale-[1.02] hover:bg-[#9d1018] hover:shadow-[0_18px_32px_rgba(182,23,30,0.28)];
   }
 
   .btn-secondary {
-    @apply bg-[#1e2330] hover:bg-[#2a3142] text-white px-4 py-2 rounded-md transition-all duration-200 border border-[#2a3142];
+    @apply rounded-full border border-[#d7dff2] px-5 py-2.5 font-semibold text-[#0b193c] shadow-[0_8px_20px_rgba(11,25,60,0.06)] transition-all duration-300 hover:scale-[1.02] hover:bg-[#eef3ff];
+    background: rgba(255, 255, 255, 0.7);
+  }
+
+  .btn-secondary:hover {
+    border-color: rgba(98, 148, 255, 0.4);
   }
 
   .card-surface {
-    @apply bg-[#1a1e26] border border-[#2a3142] rounded-lg;
+    @apply rounded-[12px] border border-[#173167]/55 text-white shadow-[0_24px_40px_rgba(11,25,60,0.16)] backdrop-blur-xl;
+    background: rgba(15, 33, 78, 0.92);
   }
 
   .input-field {
-    @apply bg-[#1a1e26] border border-[#2a3142] rounded-md px-3 py-2 text-[#fafafa] placeholder:text-[#6b7280] focus:outline-none focus:ring-2 focus:ring-[#FFBA00] focus:ring-offset-2 focus:ring-offset-[#12151a] transition-all duration-200;
+    @apply rounded-[12px] border border-[#d7dff2] px-4 py-3 text-[#0b193c] placeholder:text-[#7181a6] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all duration-300 focus:border-[#6294ff] focus:outline-none;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.8),
+      0 0 0 0 rgba(98, 148, 255, 0);
+  }
+
+  .input-field:focus {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.8),
+      0 0 0 4px rgba(98, 148, 255, 0.15);
   }
 
   .sidebar-link {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#9ca3af] hover:bg-[#1e2330] hover:text-white transition-all duration-200;
+    @apply flex items-center gap-3 rounded-full px-4 py-3 text-sm font-semibold text-white transition-all duration-300 hover:scale-[1.02];
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .sidebar-link:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
   }
 
   .sidebar-link.active {
-    @apply bg-[#FFBA00]/10 text-[#FFBA00] border-l-2 border-[#FFBA00];
+    @apply bg-white text-[#0b193c] shadow-[0_12px_28px_rgba(98,148,255,0.25)];
   }
 
   .citation-pill {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 bg-[#FFBA00]/10 border border-[#FFBA00]/30 rounded text-xs font-mono text-[#FFBA00] hover:bg-[#FFBA00]/20 cursor-pointer transition-all duration-200;
+    @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold text-[#0b193c] transition-all duration-300;
+    border: 1px solid rgba(98, 148, 255, 0.25);
+    background: #eef3ff;
+  }
+
+  .citation-pill:hover {
+    border-color: rgba(98, 148, 255, 0.45);
+    background: #dfe9ff;
   }
 
   .message-user {
-    @apply bg-[#FFBA00] text-[#12151a] px-4 py-3 rounded-2xl rounded-br-md max-w-[80%] ml-auto font-medium;
+    @apply max-w-[82%] rounded-[20px] rounded-br-[10px] border border-[#0b193c] bg-[#0b193c] px-5 py-4 text-white shadow-[0_20px_38px_rgba(11,25,60,0.14)];
   }
 
   .message-assistant {
-    @apply bg-[#1a1e26] border border-[#2a3142] text-[#fafafa] px-4 py-3 rounded-2xl rounded-bl-md max-w-[80%];
+    @apply max-w-[88%] rounded-[20px] rounded-bl-[10px] px-5 py-4 text-[#23314f] shadow-[0_20px_38px_rgba(11,25,60,0.08)] backdrop-blur-xl;
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    background: rgba(255, 255, 255, 0.72);
   }
 
   .upload-zone {
-    @apply border-2 border-dashed border-[#2a3142] rounded-lg p-8 text-center transition-all duration-300 hover:border-[#FFBA00] hover:bg-[#FFBA00]/5 cursor-pointer;
+    @apply rounded-[12px] border border-dashed border-[#cbd6f2] p-8 text-center transition-all duration-300 hover:border-[#6294ff] hover:bg-[#eef3ff];
+    background: rgba(255, 255, 255, 0.7);
   }
 
   .upload-zone.dragover {
-    @apply border-[#FFBA00] bg-[#FFBA00]/10;
+    @apply border-[#6294ff] bg-[#e7efff];
   }
 
   .stat-card {
-    @apply bg-[#1a1e26] border border-[#2a3142] rounded-lg p-5 transition-all duration-300 hover:border-[#FFBA00]/30;
+    @apply rounded-[12px] border border-[#173167]/45 p-5 text-white shadow-[0_24px_40px_rgba(11,25,60,0.12)] backdrop-blur-xl;
+    background: linear-gradient(180deg, rgba(11, 25, 60, 0.94), rgba(16, 39, 91, 0.88));
   }
 
   .voice-btn {
-    @apply relative w-12 h-12 rounded-full bg-[#FFBA00] flex items-center justify-center transition-all duration-200 hover:bg-[#e5a800] hover:scale-105;
+    @apply relative flex h-14 w-14 items-center justify-center rounded-full bg-[#0b193c] text-white shadow-[0_18px_30px_rgba(11,25,60,0.18)] transition-all duration-300 hover:scale-[1.04] hover:bg-[#15295e];
   }
 
   .voice-btn.recording {
-    @apply bg-red-500 hover:bg-red-600;
+    @apply bg-[#b6171e];
   }
 
   .voice-btn.recording::before {
     content: '';
-    @apply absolute inset-0 rounded-full border-2 border-red-500 animate-ping;
+    @apply absolute inset-0 rounded-full border-2 border-[#b6171e] animate-ping;
   }
 
   .glass-card {
-    @apply bg-[#1a1e26]/80 backdrop-blur-xl border border-[#2a3142]/50 rounded-xl;
+    @apply rounded-[12px] shadow-[0_24px_40px_rgba(11,25,60,0.08)] backdrop-blur-xl;
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    background: rgba(255, 255, 255, 0.65);
   }
 
   .gradient-text {
-    @apply bg-gradient-to-r from-[#FFBA00] to-[#ffd700] bg-clip-text text-transparent;
+    background-image: linear-gradient(120deg, #0b193c, #6294ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 
-  .glow-effect {
-    box-shadow: 0 0 30px rgba(255, 186, 0, 0.15);
+  .section-eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.28em] text-[#7181a6];
+  }
+
+  .page-title {
+    @apply text-3xl font-extrabold text-[#0b193c] md:text-4xl;
+  }
+
+  .table-shell {
+    @apply scholar-panel overflow-hidden;
+  }
+
+  .shimmer-bar {
+    background-image: linear-gradient(90deg, rgba(11, 25, 60, 0.95), rgba(98, 148, 255, 0.75), rgba(11, 25, 60, 0.95));
+    background-size: 200% 100%;
+    @apply animate-shimmer;
   }
 }
 
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: #2a3142 transparent;
+    scrollbar-color: rgba(98, 148, 255, 0.7) transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
+    width: 10px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-track {
@@ -152,53 +240,36 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: #2a3142;
-    border-radius: 3px;
+    background: linear-gradient(180deg, rgba(11, 25, 60, 0.5), rgba(98, 148, 255, 0.75));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
   }
 
-  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background-color: #3f4556;
+  .text-smallcaps {
+    font-variant: all-small-caps;
+    letter-spacing: 0.14em;
   }
 }
 
-/* Animation keyframes */
 @keyframes float {
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-10px); }
 }
 
 @keyframes glow-pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
-
-@keyframes slide-up {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes slide-in-right {
-  from { opacity: 0; transform: translateX(20px); }
-  to { opacity: 1; transform: translateX(0); }
+  0%, 100% { box-shadow: 0 0 0 rgba(98, 148, 255, 0.16); }
+  50% { box-shadow: 0 0 35px rgba(98, 148, 255, 0.25); }
 }
 
 .animate-float {
-  animation: float 3s ease-in-out infinite;
+  animation: float 7s ease-in-out infinite;
 }
 
 .animate-glow-pulse {
-  animation: glow-pulse 2s ease-in-out infinite;
+  animation: glow-pulse 3.2s ease-in-out infinite;
 }
 
-.animate-slide-up {
-  animation: slide-up 0.5s ease-out forwards;
-}
-
-.animate-slide-in-right {
-  animation: slide-in-right 0.5s ease-out forwards;
-}
-
-/* Data debug wrapper styles */
 @layer base {
   [data-debug-wrapper="true"] {
     display: contents !important;

@@ -351,7 +351,7 @@ export default function DocumentsView() {
   const columnCount = isAdmin ? 8 : 7;
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
+    <div className="scholar-page p-4 md:p-6 space-y-6">
       {/* Header */}
       <motion.div 
         initial={{ opacity: 0, y: -10 }}
@@ -359,14 +359,15 @@ export default function DocumentsView() {
         className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
       >
         <div>
-          <h1 className="text-2xl font-heading font-bold text-white">
-            Document Management
+          <p className="section-eyebrow">Library Registry</p>
+          <h1 className="page-title mt-2">
+            Asset management
           </h1>
-          <p className="text-sm text-[#6b7280] mt-1">
-            Upload and manage documents for the knowledge base
+          <p className="mt-2 text-sm text-[#5c6b8d]">
+            Upload, preview, reseed, and govern the knowledge materials powering Scholar Pulse.
           </p>
           {isRefreshing ? (
-            <p className="mt-2 text-xs text-[#FFBA00]">Refreshing document status...</p>
+            <p className="mt-2 text-xs text-[#6294ff]">Refreshing document status...</p>
           ) : null}
         </div>
         <div className="flex items-center gap-2">
@@ -414,7 +415,7 @@ export default function DocumentsView() {
             size="sm"
             onClick={() => fetchDocuments()}
             data-testid="refresh-documents-btn"
-            className="text-[#9ca3af] hover:text-white hover:bg-[#1e2330]"
+            className="btn-secondary h-11"
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
             Refresh
@@ -425,7 +426,7 @@ export default function DocumentsView() {
               size="sm"
               onClick={() => setShowSettings(!showSettings)}
               data-testid="kb-settings-btn"
-              className={`text-[#9ca3af] hover:text-white hover:bg-[#1e2330] ${showSettings ? 'bg-[#1e2330] text-white' : ''}`}
+              className={`btn-secondary h-11 ${showSettings ? '!bg-[#0b193c] !text-white !border-[#0b193c]' : ''}`}
             >
               <Settings className="w-4 h-4 mr-2" />
               KB Settings
