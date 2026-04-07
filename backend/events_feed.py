@@ -4,6 +4,7 @@ import logging
 import mimetypes
 import os
 import re
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin, urlparse
 
@@ -27,8 +28,20 @@ class GeminiEventEnhancer:
     def __init__(self):
         self.api_key = os.environ.get("GEMINI_API_KEY", "").strip()
         self.model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+        self.fallback_models = [
+            model.strip()
+            for model in os.environ.get("GEMINI_FALLBACK_MODELS", "gemini-1.5-flash,gemini-1.5-pro").split(",")
+            if model.strip()
+        ]
         self.client = genai.Client(api_key=self.api_key) if (self.api_key and genai is not None) else None
         self.is_available = bool(self.client)
+
+    def _candidate_models(self) -> List[str]:
+        ordered = []
+        for model in [self.model, *self.fallback_models]:
+            if model and model not in ordered:
+                ordered.append(model)
+        return ordered
 
     @staticmethod
     def _safe_response_text(response) -> str:
@@ -161,18 +174,30 @@ class GeminiEventEnhancer:
         contents.extend(self._fetch_image_parts(events))
 
         try:
-            response = self.client.models.generate_content(model=self.model, contents=contents)
-            text = self._safe_response_text(response)
-            return text or self._fallback_summary(query, events)
+            for model_name in self._candidate_models():
+                try:
+                    response = self.client.models.generate_content(model=model_name, contents=contents)
+                    text = self._safe_response_text(response)
+                    if text:
+                        self.model = model_name
+                        return text
+                except Exception as exc:
+                    logger.warning("Gemini event summarization failed for %s: %s", model_name, exc)
         except Exception as exc:
             logger.warning("Gemini event summarization failed: %s", exc)
-            return self._fallback_summary(query, events)
+
+        return self._fallback_summary(query, events)
 
 
 class KRMUEventsFeed:
     """Scrape official KRMU happenings/news pages and prepare chat-ready results."""
 
     INDEX_URL = "https://www.krmangalam.edu.in/happenings/news-and-events"
+    SOURCE_PAGES = (
+        "https://www.krmangalam.edu.in/happenings/news-and-events",
+        "https://www.krmangalam.edu.in/happenings/gallery-image",
+        "https://www.krmangalam.edu.in/happenings/print-coverage",
+    )
     DOMAIN = "www.krmangalam.edu.in"
     USER_AGENT = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -196,6 +221,18 @@ class KRMUEventsFeed:
         "webinar",
         "conclave",
         "hackathon",
+    }
+    GENERIC_TITLES = {
+        "news and events",
+        "vibrant events at krmu",
+        "image gallery",
+        "print coverage",
+        "gallery",
+        "overview",
+        "about us",
+        "know more",
+        "view more",
+        "read more",
     }
     _gemini = GeminiEventEnhancer()
 
@@ -239,9 +276,93 @@ class KRMUEventsFeed:
     @classmethod
     def _clean_text(cls, text: str, limit: int = 500) -> str:
         cleaned = DocumentProcessor.clean_text(text or "")
+        cleaned = re.sub(r"\b(view|read)\s+more\b", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
         if len(cleaned) > limit:
             return f"{cleaned[:limit].rstrip()}..."
         return cleaned
+
+    @classmethod
+    def _normalize_match_text(cls, value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
+
+    @classmethod
+    def _is_generic_title(cls, title: str) -> bool:
+        return cls._normalize_match_text(title) in cls.GENERIC_TITLES
+
+    @classmethod
+    def _looks_like_event_title(cls, title: str) -> bool:
+        clean = cls._clean_text(title, limit=180)
+        if len(clean) < 5 or len(clean) > 120:
+            return False
+        if cls._is_generic_title(clean):
+            return False
+        if clean.count(" ") > 18:
+            return False
+        return True
+
+    @classmethod
+    def _extract_date_from_text(cls, text: str) -> str:
+        clean = " ".join((text or "").split())
+        patterns = [
+            r"\b\d{1,2}\s+[A-Za-z]+\s*,?\s+\d{4}\b",
+            r"\b[A-Za-z]+\s+\d{1,2},\s+\d{4}\b",
+            r"\b\d{4}-\d{2}-\d{2}\b",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, clean)
+            if match:
+                return match.group(0)
+        return ""
+
+    @classmethod
+    def _parse_date_value(cls, value: str) -> Optional[datetime]:
+        if not value:
+            return None
+        normalized = value.replace(",", "").strip()
+        formats = [
+            "%d %B %Y",
+            "%d %b %Y",
+            "%B %d %Y",
+            "%b %d %Y",
+            "%Y-%m-%d",
+        ]
+        for fmt in formats:
+            try:
+                return datetime.strptime(normalized, fmt)
+            except ValueError:
+                continue
+        return None
+
+    @classmethod
+    def _extract_block_images(cls, block, page_url: str, source_title: str, max_images: int = 2) -> List[Dict]:
+        images = []
+        seen = set()
+
+        for image in block.find_all("img"):
+            src = image.get("src") or image.get("data-src") or image.get("data-lazy-src") or ""
+            if not src:
+                continue
+            absolute_url = urljoin(page_url, src.strip())
+            if absolute_url in seen:
+                continue
+            if not DocumentProcessor._looks_like_content_image_url(absolute_url):
+                continue
+
+            seen.add(absolute_url)
+            images.append(
+                {
+                    "url": absolute_url,
+                    "alt": cls._clean_text(image.get("alt") or source_title, limit=160),
+                    "source_title": source_title,
+                    "source_url": page_url,
+                    "origin": "website",
+                }
+            )
+            if len(images) >= max_images:
+                break
+
+        return images
 
     @classmethod
     def _extract_published_at(cls, soup: BeautifulSoup) -> str:
@@ -310,6 +431,70 @@ class KRMUEventsFeed:
         return candidates
 
     @classmethod
+    def _extract_page_events(cls, soup: BeautifulSoup, page_url: str) -> List[Dict]:
+        events = []
+        seen = set()
+
+        if not soup:
+            return events
+
+        container = soup.find("main") or soup.find("body")
+        if not container:
+            return events
+
+        blocks = container.find_all(["article", "section", "li", "div"], limit=500)
+        for block in blocks:
+            heading = block.find(["h1", "h2", "h3", "h4", "h5", "h6"])
+            if not heading:
+                continue
+
+            title = cls._clean_text(heading.get_text(" ", strip=True), limit=180)
+            if not cls._looks_like_event_title(title):
+                continue
+
+            link = ""
+            anchor = block.find("a", href=True)
+            if anchor:
+                candidate_link = urljoin(page_url, anchor.get("href", "").strip())
+                if candidate_link and cls._extract_domain(candidate_link).endswith("krmangalam.edu.in"):
+                    link = candidate_link
+
+            block_text = cls._clean_text(block.get_text(" ", strip=True), limit=1200)
+            if len(block_text) < 30:
+                continue
+
+            paragraph_bits = []
+            for element in block.find_all(["p", "li"], limit=10):
+                text = cls._clean_text(element.get_text(" ", strip=True), limit=220)
+                if len(text) < 20:
+                    continue
+                if cls._normalize_match_text(text) in cls.GENERIC_TITLES:
+                    continue
+                paragraph_bits.append(text)
+
+            summary = cls._clean_text(" ".join(paragraph_bits) or block_text, limit=700)
+            published_at = cls._extract_date_from_text(block_text)
+            images = cls._extract_block_images(block, page_url, title, max_images=2)
+            dedupe_key = (cls._normalize_match_text(title), link or page_url)
+            if dedupe_key in seen:
+                continue
+
+            seen.add(dedupe_key)
+            events.append(
+                {
+                    "title": title,
+                    "url": link or page_url,
+                    "source_page": page_url,
+                    "snippet": cls._clean_text(block_text, limit=320),
+                    "summary": summary,
+                    "published_at": published_at,
+                    "images": images,
+                }
+            )
+
+        return events
+
+    @classmethod
     def _parse_event_page(cls, url: str, fallback_title: str, fallback_snippet: str) -> Optional[Dict]:
         soup = cls._get_soup(url)
         if not soup:
@@ -331,6 +516,7 @@ class KRMUEventsFeed:
         return {
             "title": title or fallback_title,
             "url": url,
+            "source_page": url,
             "snippet": fallback_snippet,
             "summary": summary,
             "published_at": cls._extract_published_at(soup),
@@ -364,18 +550,35 @@ class KRMUEventsFeed:
                 event.get("summary", ""),
             ]
         ).lower()
-        query_terms = {term for term in re.findall(r"[a-z0-9]+", query_context.lower()) if len(term) > 2}
+        normalized_query = cls._normalize_match_text(query_context)
+        normalized_title = cls._normalize_match_text(event.get("title", ""))
+        query_terms = {term for term in re.findall(r"[a-z0-9]+", normalized_query) if len(term) > 2}
         if not query_terms:
             return 1.0
 
         overlap = len(query_terms & set(re.findall(r"[a-z0-9]+", haystack))) / max(len(query_terms), 1)
         score = overlap * 7
 
-        if any(term in query_context.lower() for term in ("latest", "current", "recent", "happenings")):
+        if normalized_title and normalized_title in normalized_query:
+            score += 8
+        elif normalized_query and normalized_query in normalized_title:
+            score += 6
+
+        title_terms = [term for term in normalized_title.split() if len(term) > 2]
+        if title_terms:
+            title_overlap = len(set(title_terms) & query_terms) / max(len(set(title_terms)), 1)
+            score += title_overlap * 5
+
+        if any(term in normalized_query for term in ("tell me about", "about this event", "event summary")) and normalized_title:
+            score += 0.8
+
+        if any(term in normalized_query for term in ("latest", "current", "recent", "happenings")):
             score += max(0, 3 - ordinal) * 0.6
 
-        if event.get("published_at"):
-            score += 0.5
+        parsed_date = cls._parse_date_value(event.get("published_at", ""))
+        if parsed_date:
+            age_days = max((datetime.utcnow() - parsed_date).days, 0)
+            score += max(0, 2.5 - min(age_days / 180, 2.5))
 
         return score
 
@@ -386,28 +589,68 @@ class KRMUEventsFeed:
         conversation_history: Optional[List[Dict]] = None,
         max_events: int = 3,
     ) -> List[Dict]:
-        soup = cls._get_soup(cls.INDEX_URL)
-        candidates = cls._extract_listing_candidates(soup)
-        if not candidates:
+        query_context = cls._build_query_context(query, conversation_history)
+        broad_query = any(term in query_context.lower() for term in ("latest", "current", "recent", "happenings", "events", "news"))
+
+        scraped_events = []
+        for page_url in cls.SOURCE_PAGES:
+            soup = cls._get_soup(page_url)
+            page_events = cls._extract_page_events(soup, page_url)
+            scraped_events.extend(page_events)
+
+        if not scraped_events:
             return []
 
         parsed_events = []
-        for ordinal, candidate in enumerate(candidates[:8]):
-            event = cls._parse_event_page(candidate["url"], candidate["title"], candidate["snippet"])
-            if not event:
-                event = {
-                    "title": candidate["title"],
-                    "url": candidate["url"],
-                    "snippet": candidate["snippet"],
-                    "summary": candidate["snippet"],
-                    "published_at": "",
-                    "images": [],
-                }
-            event["score"] = cls._score_event(cls._build_query_context(query, conversation_history), event, ordinal)
+        for ordinal, event in enumerate(scraped_events):
+            detail_url = event.get("url", "")
+            if detail_url and detail_url != event.get("source_page") and "/happenings/" in detail_url:
+                enriched = cls._parse_event_page(detail_url, event["title"], event["summary"])
+                if enriched:
+                    if len(enriched.get("summary", "")) < 80 and len(event.get("summary", "")) > len(enriched.get("summary", "")):
+                        enriched["summary"] = event["summary"]
+                    if len(enriched.get("snippet", "")) < 60 and len(event.get("snippet", "")) > len(enriched.get("snippet", "")):
+                        enriched["snippet"] = event["snippet"]
+                    if not enriched.get("images") and event.get("images"):
+                        enriched["images"] = event["images"]
+                    event = {**event, **enriched}
+
+            event["score"] = cls._score_event(query_context, event, ordinal)
+            if not broad_query and event["score"] < 2.6:
+                continue
             parsed_events.append(event)
 
         parsed_events.sort(key=lambda item: item.get("score", 0), reverse=True)
-        return parsed_events[:max_events]
+        if not broad_query:
+            exactish = [
+                item for item in parsed_events
+                if cls._normalize_match_text(item.get("title", "")) in cls._normalize_match_text(query_context)
+                or any(
+                    token in cls._normalize_match_text(item.get("title", ""))
+                    for token in [term for term in cls._normalize_match_text(query_context).split() if len(term) > 3]
+                )
+            ]
+            if exactish:
+                parsed_events = exactish + [item for item in parsed_events if item not in exactish]
+
+        deduped = []
+        seen = set()
+        for item in parsed_events:
+            key = (cls._normalize_match_text(item.get("title", "")), item.get("url", ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+            if len(deduped) >= max_events:
+                break
+
+        if not broad_query and deduped:
+            lead_title = cls._normalize_match_text(deduped[0].get("title", ""))
+            normalized_query = cls._normalize_match_text(query_context)
+            if lead_title and (lead_title in normalized_query or deduped[0].get("score", 0) >= 6):
+                return [deduped[0]]
+
+        return deduped
 
     @classmethod
     async def search_events(
@@ -473,4 +716,5 @@ class KRMUEventsFeed:
         return {
             "configured": cls._gemini.is_available,
             "model": cls._gemini.model if cls._gemini.is_available else None,
+            "fallback_models": cls._gemini.fallback_models if cls._gemini.is_available else [],
         }
