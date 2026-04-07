@@ -78,7 +78,7 @@
 
 @layer components {
   .scholar-page {
-    @apply h-full min-h-0 overflow-hidden bg-transparent;
+    @apply min-h-0 bg-transparent;
   }
 
   .scholar-panel {
