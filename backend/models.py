@@ -142,6 +142,7 @@ class ChatArtifact(BaseModel):
     data_url: str
     text_content: str = ""
     generated_from_role: Literal["user", "assistant", "system"] = "assistant"
+    images: List[ChatImage] = []
 
 
 class ChatResponse(BaseModel):
@@ -158,6 +159,7 @@ class PdfExportRequest(BaseModel):
     content: str
     title: Optional[str] = None
     generated_from_role: Literal["user", "assistant", "system"] = "assistant"
+    images: List[ChatImage] = []
 
 
 class PdfExportResponse(BaseModel):

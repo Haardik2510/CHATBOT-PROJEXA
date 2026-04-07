@@ -41,6 +41,9 @@ const suggestions = [
   "Summarize hostel facilities and student life",
 ];
 
+const PDF_EXPORT_PATTERN =
+  /\b(convert|export|save|turn|make|create|download)\b.*\b(this|last|latest|previous|above|response|answer|message|summary|event)\b.*\bpdf\b|\bpdf\b.*\b(this|last|latest|previous|above|response|answer|message|summary|event)\b/i;
+
 const getDatabaseConfidence = (sources = []) => {
   const bestScore = Math.max(...sources.map((source) => Number(source?.relevance_score || 0)), 0);
   if (bestScore >= 0.82) {
@@ -247,9 +250,15 @@ export default function ChatView() {
   const sendMessage = async (voiceInput = false) => {
     if (!input.trim() || isLoading) return;
 
+    const outboundMessage = input.trim();
+    if (PDF_EXPORT_PATTERN.test(outboundMessage)) {
+      await handlePdfExportRequest(outboundMessage);
+      return;
+    }
+
     const userMessage = {
       role: "user",
-      content: input.trim(),
+      content: outboundMessage,
       timestamp: new Date().toISOString(),
       answerMode: DATABASE_MODE,
     };
@@ -290,6 +299,115 @@ export default function ChatView() {
     } catch (error) {
       console.error("Chat error:", error);
       const fallbackText = buildFriendlyChatError(error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: fallbackText,
+          sources: [],
+          images: [],
+          artifacts: [],
+          timestamp: new Date().toISOString(),
+          answerMode: DATABASE_MODE,
+        },
+      ]);
+      toast.error(fallbackText);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resolvePdfExportSource = (message) => {
+    const lowered = String(message || "").toLowerCase();
+    let preferredRole = "assistant";
+
+    if (
+      ["my message", "my text", "what i wrote", "user message", "my last", "my previous", "my latest"].some((token) =>
+        lowered.includes(token)
+      )
+    ) {
+      preferredRole = "user";
+    }
+
+    const searchOrder =
+      preferredRole === "assistant"
+        ? ["assistant", "user", "system"]
+        : [preferredRole, "assistant", "user", "system"];
+
+    for (const role of searchOrder) {
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const item = messages[index];
+        if (item?.role !== role) continue;
+        const content = String(item?.content || "").trim();
+        if (!content) continue;
+        return { ...item, content, index };
+      }
+    }
+
+    return null;
+  };
+
+  const handlePdfExportRequest = async (message) => {
+    const sourceMessage = resolvePdfExportSource(message);
+    const userMessage = {
+      role: "user",
+      content: message,
+      timestamp: new Date().toISOString(),
+      answerMode: DATABASE_MODE,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+
+    if (!sourceMessage) {
+      const fallbackText =
+        "I couldn't find a recent message to convert yet. Ask a question first, then say `convert this message to pdf`.";
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: fallbackText,
+          sources: [],
+          images: [],
+          artifacts: [],
+          timestamp: new Date().toISOString(),
+          answerMode: DATABASE_MODE,
+        },
+      ]);
+      toast.error(fallbackText);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const titlePrefix = sourceMessage.role === "assistant" ? "Scholar Pulse Reply" : "Scholar Pulse Note";
+      const response = await axios.post(`${API}/chat/export-pdf`, {
+        content: sourceMessage.content,
+        title: `${titlePrefix} PDF`,
+        generated_from_role: sourceMessage.role || "assistant",
+        images: sourceMessage.images || [],
+      });
+      const artifact = response.data?.artifact;
+      if (!artifact) {
+        throw new Error("Missing PDF artifact");
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "I converted the latest message into a PDF with the retrieved images included when available. Use the controls below to view it, edit the text, or download the file.",
+          sources: [],
+          images: [],
+          artifacts: [artifact],
+          timestamp: new Date().toISOString(),
+          answerMode: DATABASE_MODE,
+        },
+      ]);
+    } catch (error) {
+      console.error("PDF export error:", error);
+      const fallbackText = error?.response?.data?.detail || "I couldn't create the PDF right now.";
       setMessages((prev) => [
         ...prev,
         {
@@ -368,6 +486,7 @@ export default function ChatView() {
         content: editedPdfText.trim(),
         title: editingArtifact.title,
         generated_from_role: editingArtifact.generated_from_role || "assistant",
+        images: editingArtifact.images || messages[editingMessageIndex]?.images || [],
       });
       const refreshedArtifact = response.data?.artifact;
       if (!refreshedArtifact) {
