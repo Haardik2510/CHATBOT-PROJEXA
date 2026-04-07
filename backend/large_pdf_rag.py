@@ -18,16 +18,13 @@ import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Generator, List, Optional, Sequence, Tuple
 
 import chromadb
 import fitz
 import requests
 from chromadb.config import Settings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI
-from rank_bm25 import BM25Okapi
-from sentence_transformers import CrossEncoder, SentenceTransformer
 from tqdm import tqdm
 
 
@@ -53,8 +50,8 @@ MIN_CHUNK_CHARS = 100
 RETRIEVE_TOP_K = 6
 RERANK_TOP_K = 3
 
-_EMBEDDER: Optional[SentenceTransformer] = None
-_RERANKER: Optional[CrossEncoder] = None
+_EMBEDDER: Optional[Any] = None
+_RERANKER: Optional[Any] = None
 
 
 @dataclass
@@ -287,7 +284,14 @@ class HybridIndexStore:
         with self.records_path.open("r", encoding="utf-8") as handle:
             return [json.loads(line) for line in handle if line.strip()]
 
-    def load_or_build_bm25(self) -> Tuple[BM25Okapi, List[Dict]]:
+    def load_or_build_bm25(self) -> Tuple[Any, List[Dict]]:
+        try:
+            from rank_bm25 import BM25Okapi
+        except ImportError as exc:
+            raise RuntimeError(
+                "Large PDF hybrid retrieval requires the optional dependency 'rank-bm25'."
+            ) from exc
+
         records = self.load_records()
         if not records:
             raise FileNotFoundError(f"No stored chunks found for collection '{self.collection_name}'")
@@ -304,16 +308,28 @@ class HybridIndexStore:
         return bm25, records
 
 
-def _get_embedder() -> SentenceTransformer:
+def _get_embedder():
     global _EMBEDDER
     if _EMBEDDER is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise RuntimeError(
+                "Large PDF indexing requires the optional dependency 'sentence-transformers'."
+            ) from exc
         _EMBEDDER = SentenceTransformer("BAAI/bge-m3")
     return _EMBEDDER
 
 
-def _get_reranker() -> CrossEncoder:
+def _get_reranker():
     global _RERANKER
     if _RERANKER is None:
+        try:
+            from sentence_transformers import CrossEncoder
+        except ImportError as exc:
+            raise RuntimeError(
+                "Large PDF reranking requires the optional dependency 'sentence-transformers'."
+            ) from exc
         _RERANKER = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
     return _RERANKER
 
@@ -501,7 +517,14 @@ def _prepare_semantic_sections(page: Dict) -> List[Tuple[str, str]]:
     return sections
 
 
-def _sentence_safe_chunk_splitter() -> RecursiveCharacterTextSplitter:
+def _sentence_safe_chunk_splitter():
+    try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+    except ImportError as exc:
+        raise RuntimeError(
+            "Large PDF chunking requires the optional dependency 'langchain-text-splitters'."
+        ) from exc
+
     return RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
