@@ -52,15 +52,50 @@ const getDatabaseConfidence = (sources = []) => {
   return { label: "Low confidence", className: "bg-[#b6171e]/8 text-[#b6171e] border border-[#b6171e]/15" };
 };
 
-const shouldInlineCite = (line) => {
-  const normalized = (line || "").trim();
-  if (!normalized) return false;
-  return (
-    !/^source:/i.test(normalized) &&
-    !/^additional source:/i.test(normalized) &&
-    !/^if you want/i.test(normalized) &&
-    !/^what i could not verify/i.test(normalized)
-  );
+const normalizeAssistantText = (content) => {
+  const lines = String(content || "").split("\n");
+  const cleanedLines = [];
+
+  for (const rawLine of lines) {
+    let line = rawLine.trimEnd();
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      if (cleanedLines[cleanedLines.length - 1] !== "") {
+        cleanedLines.push("");
+      }
+      continue;
+    }
+
+    if (/^(key points|highlights|source|additional source|source trail|direct answer|why it matters):\s*$/i.test(trimmed)) {
+      continue;
+    }
+
+    line = line.replace(/^direct answer:\s*/i, "");
+    line = line.replace(/^key points:\s*/i, "");
+    line = line.replace(/^highlights:\s*/i, "");
+    line = line.replace(/^why it matters:\s*/i, "");
+    line = line.replace(/^source:\s*/i, "");
+    line = line.replace(/^additional source:\s*/i, "");
+    line = line.replace(
+      /^what i could not verify from the indexed docs:\s*/i,
+      "I couldn't verify from the indexed documents: "
+    );
+
+    if (line.trim()) {
+      cleanedLines.push(line);
+    }
+  }
+
+  while (cleanedLines[0] === "") {
+    cleanedLines.shift();
+  }
+
+  while (cleanedLines[cleanedLines.length - 1] === "") {
+    cleanedLines.pop();
+  }
+
+  return cleanedLines.join("\n");
 };
 
 export default function ChatView() {
@@ -358,12 +393,8 @@ export default function ChatView() {
   };
 
   const renderAssistantContent = (message) => {
-    if (message.role !== "assistant" || !message.sources?.length) {
-      return <p className="whitespace-pre-wrap text-[15px] leading-7">{message.content}</p>;
-    }
-
-    const lines = String(message.content || "").split("\n");
-    let evidenceLineIndex = 0;
+    const normalizedContent = normalizeAssistantText(message.content);
+    const lines = normalizedContent.split("\n");
 
     return (
       <div className="space-y-2">
@@ -373,25 +404,9 @@ export default function ChatView() {
             return <div key={`line-${index}`} className="h-2" />;
           }
 
-          if (/^source:/i.test(trimmed) || /^additional source:/i.test(trimmed)) {
-            return null;
-          }
-
-          const isHeading = trimmed.endsWith(":") && !trimmed.startsWith("-");
-          const sourceIndex = Math.min(evidenceLineIndex, message.sources.length - 1);
-          const citation = shouldInlineCite(trimmed) ? message.sources[sourceIndex] : null;
-          if (citation && !isHeading) {
-            evidenceLineIndex += 1;
-          }
-
           return (
-            <p key={`line-${index}`} className={`whitespace-pre-wrap leading-7 ${isHeading ? "font-semibold text-[#0b193c]" : ""}`}>
+            <p key={`line-${index}`} className="whitespace-pre-wrap text-[15px] leading-7 text-[#223457]">
               {line}
-              {citation && !isHeading ? (
-                <span className="ml-2 align-super text-[10px] font-semibold text-[#6294ff]" title={citation.document_title}>
-                  [{Math.min(sourceIndex + 1, message.sources.length)}]
-                </span>
-              ) : null}
             </p>
           );
         })}
@@ -502,20 +517,6 @@ export default function ChatView() {
                     className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     <div className={message.role === "user" ? "message-user" : "message-assistant"}>
-                      {message.role === "assistant" ? (
-                        <div className="mb-4 flex items-center justify-between gap-3 border-b border-[#e5eaf7] pb-3">
-                          <div>
-                            <p className="section-eyebrow">AI Summary</p>
-                            <p className="text-sm font-semibold text-[#0b193c]">Grounded knowledge response</p>
-                          </div>
-                          {message.sources?.length ? (
-                            <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${getDatabaseConfidence(message.sources).className}`}>
-                              {getDatabaseConfidence(message.sources).label}
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null}
-
                       {renderAssistantContent(message)}
 
                       {message.role === "assistant" && message.images?.length > 0 ? (
@@ -597,9 +598,14 @@ export default function ChatView() {
 
                       {message.sources?.length ? (
                         <div className="mt-5 border-t border-[#e5eaf7] pt-4">
-                          <div className="mb-3 flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-[#6294ff]" />
-                            <p className="text-sm font-semibold text-[#0b193c]">Source trail</p>
+                          <div className="mb-3 flex flex-wrap items-center gap-2.5">
+                            <span className="inline-flex items-center gap-2 rounded-full border border-[#d7dff2] bg-white px-3 py-1.5 text-xs font-semibold text-[#3c4c71]">
+                              <FileText className="h-3.5 w-3.5 text-[#6294ff]" />
+                              Sources
+                            </span>
+                            <span className={`rounded-full px-3 py-1.5 text-[11px] font-semibold ${getDatabaseConfidence(message.sources).className}`}>
+                              {getDatabaseConfidence(message.sources).label}
+                            </span>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             {message.sources.map((source, sourceIndex) => (

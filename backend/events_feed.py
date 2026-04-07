@@ -73,19 +73,13 @@ class GeminiEventEnhancer:
         if len(events) == 1:
             event = events[0]
             summary = event.get("summary") or event.get("snippet") or "Official event details are available on the linked page."
-            return (
-                f"Direct answer: {event.get('title', 'KRMU event')}\n\n"
-                f"Key points:\n- {summary}\n\n"
-                f"Source:\n- {event.get('url', 'Official KRMU happenings page')}"
-            )
+            title = event.get("title", "KRMU event")
+            return f"{title} is one of the official K.R. Mangalam University happenings. {summary}"
 
-        lines = ["Direct answer: Here are the current KRMU happenings I found on the official university events pages.", "", "Key points:"]
+        lines = ["Here are the current K.R. Mangalam University events I found on the official happenings pages.", ""]
         for event in events[:3]:
             summary = event.get("summary") or event.get("snippet") or "Official event details are available on the linked page."
             lines.append(f"- {event.get('title', 'KRMU event')}: {summary}")
-        lines.extend(["", "Source:"])
-        for event in events[:3]:
-            lines.append(f"- {event.get('title', 'KRMU event')}: {event.get('url', 'Official KRMU happenings page')}")
         return "\n".join(lines)
 
     @staticmethod
@@ -156,14 +150,11 @@ class GeminiEventEnhancer:
             "You are preparing a beautiful but strictly grounded university event response for K.R. Mangalam University.\n"
             "Use ONLY the provided official KRMU event text and images. Do not invent details, dates, speakers, venues, or outcomes.\n"
             "If a detail is missing, say it is not clearly stated on the official page.\n"
-            "Respond in this exact structure:\n"
-            "Direct answer: <1 concise paragraph>\n\n"
-            "Highlights:\n"
-            "- <2 to 4 crisp bullets>\n\n"
-            "Why it matters:\n"
-            "- <1 or 2 bullets>\n\n"
-            "Source:\n"
-            "- <event title>: <event url>\n"
+            "Write like a polished production chatbot.\n"
+            "Do not use headings such as Direct answer, Highlights, Why it matters, or Source.\n"
+            "Start with a natural summary paragraph.\n"
+            "Use short bullets only if they truly improve clarity.\n"
+            "Keep source citations out of the body because the UI will render sources separately.\n"
             "Keep it elegant, readable, and under 220 words unless the user asked for current events across multiple items.\n\n"
             f"User query: {query}\n"
             f"Recent chat context:\n{history_context or 'None'}\n\n"
