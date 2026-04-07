@@ -395,6 +395,10 @@ export default function ChatView() {
   const renderAssistantContent = (message) => {
     const normalizedContent = normalizeAssistantText(message.content);
     const lines = normalizedContent.split("\n");
+    const textClassName =
+      message.role === "user"
+        ? "whitespace-pre-wrap text-[15px] leading-7 text-white"
+        : "whitespace-pre-wrap text-[15px] leading-7 text-[#223457]";
 
     return (
       <div className="space-y-2">
@@ -405,7 +409,7 @@ export default function ChatView() {
           }
 
           return (
-            <p key={`line-${index}`} className="whitespace-pre-wrap text-[15px] leading-7 text-[#223457]">
+            <p key={`line-${index}`} className={textClassName}>
               {line}
             </p>
           );
