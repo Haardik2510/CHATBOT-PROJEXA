@@ -1398,6 +1398,36 @@ Summarize the most reliable answer supported by the snippets above."""
 
         return sources[:3]
 
+    def format_images(self, retrieved_docs: List[Dict], max_images: int = 4) -> List[Dict]:
+        """Collect unique image references from retrieved document metadata."""
+        images = []
+        seen = set()
+
+        for doc in retrieved_docs:
+            metadata = doc.get("metadata") or {}
+            for image in metadata.get("images", []) or []:
+                key = (
+                    image.get("storage_path")
+                    or image.get("url")
+                    or f"{doc.get('document_id', '')}:{image.get('alt', '')}"
+                )
+                if not key or key in seen:
+                    continue
+
+                images.append(
+                    {
+                        **image,
+                        "source_title": image.get("source_title") or doc.get("document_title", "Unknown"),
+                        "source_url": image.get("source_url") or metadata.get("source_url"),
+                        "origin": image.get("origin") or ("website" if image.get("url") else "document"),
+                    }
+                )
+                seen.add(key)
+                if len(images) >= max_images:
+                    return images
+
+        return images
+
     def get_document_chunks_preview(self, document_id: str, limit: int = 8) -> List[Dict]:
         """Fetch a small preview of stored chunks for a document."""
         preview_limit = max(1, min(limit, 12))
@@ -1566,6 +1596,7 @@ Summarize the most reliable answer supported by the snippets above."""
         return {
             "response": response,
             "sources": self.format_sources(relevant_docs),
+            "images": self.format_images(relevant_docs),
         }
 
     def delete_document(self, document_id: str) -> bool:

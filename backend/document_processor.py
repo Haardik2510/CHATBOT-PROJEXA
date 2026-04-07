@@ -3,10 +3,12 @@ import os
 import re
 import logging
 import shutil
+import hashlib
 from typing import List, Dict, Optional, Tuple
 from io import BytesIO
 import httpx
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +187,217 @@ class DocumentProcessor:
         if secondary_metrics["quality_score"] > primary_metrics["quality_score"] + 0.08:
             return secondary_text, secondary_metrics
         return primary_text, primary_metrics
+
+    @staticmethod
+    def _looks_like_content_image_url(url: str) -> bool:
+        """Keep content images and skip obvious logos, icons, and tiny assets."""
+        normalized = (url or "").strip()
+        if not normalized:
+            return False
+
+        parsed = urlparse(normalized)
+        if parsed.scheme not in {"http", "https"}:
+            return False
+
+        lowered = normalized.lower()
+        if any(token in lowered for token in ("logo", "icon", "sprite", "favicon", "placeholder", "avatar")):
+            return False
+        if lowered.endswith((".svg", ".ico", ".gif")):
+            return False
+        return True
+
+    @staticmethod
+    def _prepare_image_asset(image_bytes: bytes, filename: str, alt: str = "") -> Optional[Dict]:
+        """Normalize extracted document images into lightweight chat-ready assets."""
+        if not image_bytes:
+            return None
+
+        try:
+            from PIL import Image
+        except ImportError:
+            return None
+
+        try:
+            with Image.open(BytesIO(image_bytes)) as image:
+                width, height = image.size
+                if width < 180 or height < 180:
+                    return None
+
+                working = image.copy()
+                working.thumbnail((1280, 1280))
+                output = BytesIO()
+
+                if working.mode in ("RGBA", "LA", "P"):
+                    working.save(output, format="PNG", optimize=True)
+                    content_type = "image/png"
+                    extension = "png"
+                else:
+                    if working.mode != "RGB":
+                        working = working.convert("RGB")
+                    working.save(output, format="JPEG", quality=84, optimize=True)
+                    content_type = "image/jpeg"
+                    extension = "jpg"
+
+                return {
+                    "filename": f"{os.path.splitext(filename)[0]}.{extension}",
+                    "content": output.getvalue(),
+                    "content_type": content_type,
+                    "alt": (alt or "").strip(),
+                }
+        except Exception as exc:
+            logger.debug("Skipping image asset %s due to processing error: %s", filename, exc)
+            return None
+
+    @classmethod
+    def extract_html_images(
+        cls,
+        soup: BeautifulSoup,
+        base_url: str,
+        *,
+        source_title: str = "",
+        max_images: int = 4,
+    ) -> List[Dict]:
+        """Extract a few useful absolute image URLs from a webpage."""
+        if not soup or not base_url or max_images <= 0:
+            return []
+
+        images = []
+        seen = set()
+
+        def add_image(url_value: str, alt: str = "") -> None:
+            if len(images) >= max_images:
+                return
+            absolute_url = urljoin(base_url, (url_value or "").strip())
+            normalized_key = absolute_url.split("#")[0]
+            if not cls._looks_like_content_image_url(absolute_url) or normalized_key in seen:
+                return
+            seen.add(normalized_key)
+            images.append(
+                {
+                    "url": absolute_url,
+                    "alt": cls.clean_text(alt or source_title)[:160],
+                    "source_title": source_title,
+                    "source_url": base_url,
+                    "origin": "website",
+                }
+            )
+
+        for selector in (
+            ('meta[property="og:image"]', "content"),
+            ('meta[name="twitter:image"]', "content"),
+        ):
+            for tag in soup.select(selector[0]):
+                add_image(tag.get(selector[1], ""))
+                if len(images) >= max_images:
+                    return images
+
+        main_content = soup.find(["main", "article"]) or soup.find("body")
+        for image in (main_content.find_all("img") if main_content else []):
+            src = image.get("src") or image.get("data-src") or image.get("data-lazy-src") or ""
+            width = int(image.get("width") or 0) if str(image.get("width") or "").isdigit() else 0
+            height = int(image.get("height") or 0) if str(image.get("height") or "").isdigit() else 0
+            if width and width < 180:
+                continue
+            if height and height < 180:
+                continue
+            add_image(src, image.get("alt", ""))
+            if len(images) >= max_images:
+                break
+
+        return images
+
+    @classmethod
+    def _extract_pdf_images(cls, file_content: bytes, max_images: int = 4) -> List[Dict]:
+        """Extract a few meaningful images from a PDF."""
+        try:
+            import fitz
+        except ImportError:
+            return []
+
+        extracted = []
+        seen_hashes = set()
+
+        try:
+            pdf = fitz.open(stream=file_content, filetype="pdf")
+        except Exception as exc:
+            logger.debug("PDF image extraction skipped: %s", exc)
+            return []
+
+        try:
+            page_limit = min(pdf.page_count, 24)
+            for page_index in range(page_limit):
+                page = pdf.load_page(page_index)
+                for image_number, image_info in enumerate(page.get_images(full=True), start=1):
+                    if len(extracted) >= max_images:
+                        return extracted
+
+                    try:
+                        image_data = pdf.extract_image(image_info[0])
+                        raw_bytes = image_data.get("image")
+                        if not raw_bytes:
+                            continue
+                        digest = hashlib.sha1(raw_bytes).hexdigest()
+                        if digest in seen_hashes:
+                            continue
+
+                        prepared = cls._prepare_image_asset(
+                            raw_bytes,
+                            filename=f"page-{page_index + 1}-image-{image_number}.{image_data.get('ext', 'png')}",
+                            alt=f"Document image from page {page_index + 1}",
+                        )
+                        if not prepared:
+                            continue
+
+                        extracted.append(prepared)
+                        seen_hashes.add(digest)
+                    except Exception as exc:
+                        logger.debug("Skipping PDF image on page %s: %s", page_index + 1, exc)
+                        continue
+        finally:
+            pdf.close()
+
+        return extracted
+
+    @classmethod
+    def _extract_docx_images(cls, file_content: bytes, max_images: int = 4) -> List[Dict]:
+        """Extract embedded images from a DOCX document."""
+        try:
+            from docx import Document
+        except ImportError:
+            return []
+
+        extracted = []
+        seen_hashes = set()
+
+        try:
+            doc = Document(BytesIO(file_content))
+            for index, rel in enumerate(doc.part.rels.values(), start=1):
+                if len(extracted) >= max_images or "image" not in rel.reltype:
+                    continue
+
+                raw_bytes = getattr(rel.target_part, "blob", None)
+                if not raw_bytes:
+                    continue
+
+                digest = hashlib.sha1(raw_bytes).hexdigest()
+                if digest in seen_hashes:
+                    continue
+
+                original_name = os.path.basename(str(getattr(rel.target_part, "partname", f"docx-image-{index}.png")))
+                prepared = cls._prepare_image_asset(
+                    raw_bytes,
+                    filename=original_name or f"docx-image-{index}.png",
+                    alt=f"Embedded document image {index}",
+                )
+                if not prepared:
+                    continue
+
+                extracted.append(prepared)
+                seen_hashes.add(digest)
+        except Exception as exc:
+            logger.debug("DOCX image extraction skipped: %s", exc)
+
+        return extracted
     
     @staticmethod
     def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
@@ -277,6 +490,7 @@ class DocumentProcessor:
                 "success": True,
                 "text": full_text,
                 "chunks": chunks,
+                "images": cls._extract_pdf_images(file_content),
                 "page_count": len(reader.pages),
                 "used_ocr": used_ocr,
                 "ocr_engine": ocr_engine,
@@ -436,6 +650,7 @@ class DocumentProcessor:
                 "success": True,
                 "text": full_text,
                 "chunks": chunks,
+                "images": cls._extract_docx_images(file_content),
                 "paragraph_count": len(doc.paragraphs)
             }
         except Exception as e:
@@ -552,6 +767,9 @@ class DocumentProcessor:
                 response.raise_for_status()
                 
                 soup = BeautifulSoup(response.text, 'lxml')
+                title = soup.find('title')
+                title_text = title.get_text(strip=True) if title else url
+                images = cls.extract_html_images(soup, url, source_title=title_text)
                 
                 # Remove script and style elements
                 for script in soup(["script", "style", "nav", "footer", "header"]):
@@ -574,14 +792,11 @@ class DocumentProcessor:
                 
                 chunks = cls.chunk_text(full_text)
                 
-                # Get title
-                title = soup.find('title')
-                title_text = title.get_text(strip=True) if title else url
-                
                 return {
                     "success": True,
                     "text": full_text,
                     "chunks": chunks,
+                    "images": images,
                     "title": title_text,
                     "url": url
                 }

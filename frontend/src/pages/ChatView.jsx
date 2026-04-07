@@ -212,7 +212,7 @@ export default function ChatView() {
         answer_mode: answerMode,
       });
 
-      const { response: aiResponse, sources, session_id, answer_mode } = response.data;
+      const { response: aiResponse, sources, images, session_id, answer_mode } = response.data;
 
       if (!sessionId) {
         setSessionId(session_id);
@@ -222,6 +222,7 @@ export default function ChatView() {
         role: "assistant",
         content: aiResponse,
         sources: sources,
+        images: images || [],
         timestamp: new Date().toISOString(),
         answerMode: answer_mode || answerMode,
         isWebFallback:
@@ -244,6 +245,7 @@ export default function ChatView() {
           role: "assistant",
           content: fallbackText,
           sources: [],
+          images: [],
           timestamp: new Date().toISOString(),
           answerMode,
           isWebFallback: false,
@@ -473,6 +475,35 @@ export default function ChatView() {
                     }
                   >
                     {renderAssistantContent(message)}
+
+                    {message.role === "assistant" && message.images?.length > 0 ? (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        {message.images.map((image, imageIndex) => (
+                          <a
+                            key={`${index}-image-${imageIndex}`}
+                            href={image.source_url || image.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="overflow-hidden rounded-2xl border border-[#2a3142] bg-[#151922] transition-colors hover:border-[#FFBA00]/35"
+                          >
+                            <img
+                              src={image.url}
+                              alt={image.alt || image.source_title || "Chat image"}
+                              loading="lazy"
+                              className="h-40 w-full object-cover"
+                            />
+                            <div className="space-y-1 p-3">
+                              <p className="line-clamp-2 text-sm font-medium text-white">
+                                {image.source_title || "Related visual"}
+                              </p>
+                              <p className="line-clamp-2 text-xs text-[#8b93a7]">
+                                {image.alt || "Open the source image in a new tab"}
+                              </p>
+                            </div>
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
 
                     {/* Sources/Citations */}
                     {message.sources && message.sources.length > 0 && (

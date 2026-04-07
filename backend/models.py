@@ -122,9 +122,18 @@ class SourceCitation(BaseModel):
     relevance_score: float
 
 
+class ChatImage(BaseModel):
+    url: str
+    alt: str = ""
+    source_title: str = ""
+    source_url: Optional[str] = None
+    origin: Literal["document", "website"] = "document"
+
+
 class ChatResponse(BaseModel):
     response: str
     sources: List[SourceCitation] = []
+    images: List[ChatImage] = []
     session_id: str
     voice_output: bool = False
     answer_mode: Literal["database", "internet"] = "database"
