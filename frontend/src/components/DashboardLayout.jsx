@@ -10,10 +10,16 @@ import {
   Users,
   LogOut,
   Menu,
-  X,
   GraduationCap,
-  ChevronRight,
+  Sparkles,
+  Activity,
 } from "lucide-react";
+
+const shellMotion = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  transition: { type: "spring", stiffness: 100, damping: 20 },
+};
 
 export default function DashboardLayout() {
   const { user, logout, isFaculty, isAdmin } = useAuth();
@@ -21,198 +27,155 @@ export default function DashboardLayout() {
   const location = useLocation();
 
   const navigation = [
-    {
-      name: "Chat",
-      href: "/chat",
-      icon: MessageSquare,
-      show: true,
-    },
-    {
-      name: "Documents",
-      href: "/documents",
-      icon: FileText,
-      show: isFaculty,
-    },
-    {
-      name: "Analytics",
-      href: "/analytics",
-      icon: BarChart3,
-      show: isFaculty,
-    },
-    {
-      name: "Users",
-      href: "/users",
-      icon: Users,
-      show: isAdmin,
-    },
+    { name: "Research Chat", href: "/chat", icon: MessageSquare, show: true, note: "Living archive" },
+    { name: "Library Registry", href: "/documents", icon: FileText, show: isFaculty, note: "Materials & indexing" },
+    { name: "Scholar Analytics", href: "/analytics", icon: BarChart3, show: isFaculty, note: "Usage intelligence" },
+    { name: "User Registry", href: "/users", icon: Users, show: isAdmin, note: "Community control" },
   ].filter((item) => item.show);
 
-  const roleColors = {
-    student: "bg-blue-500/20 text-blue-400 border border-blue-500/30",
-    faculty: "bg-green-500/20 text-green-400 border border-green-500/30",
-    admin: "bg-[#FFBA00]/20 text-[#FFBA00] border border-[#FFBA00]/30",
+  const roleLabel = {
+    student: "Student Scholar",
+    faculty: "Faculty Lead",
+    admin: "Platform Admin",
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-[#12151a] flex">
-      {/* Mobile sidebar backdrop */}
+    <div className="flex h-screen overflow-hidden bg-transparent">
       <AnimatePresence>
-        {sidebarOpen && (
-          <motion.div
+        {sidebarOpen ? (
+          <motion.button
+            type="button"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
             onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 z-40 bg-[#0b193c]/35 backdrop-blur-sm lg:hidden"
           />
-        )}
+        ) : null}
       </AnimatePresence>
 
-      {/* Sidebar */}
       <aside
-        className={`
-          fixed lg:static inset-y-0 left-0 z-50
-          h-screen w-64 shrink-0 bg-[#0f1115] border-r border-[#1e2330]
-          transform transition-transform duration-300 ease-out
-          ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
-        `}
+        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-[320px] shrink-0 flex-col scholar-hero border-r border-white/10 px-5 pb-5 pt-6 text-white transition-transform duration-300 lg:static lg:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
       >
-        <div className="flex flex-col h-full">
-          {/* Logo */}
-          <div className="p-5 border-b border-[#1e2330]">
-            <motion.div 
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="flex items-center gap-3"
-            >
-              <div className="w-11 h-11 bg-[#FFBA00] rounded-xl flex items-center justify-center shadow-lg shadow-[#FFBA00]/10">
-                <GraduationCap className="w-6 h-6 text-[#12151a]" />
+        <motion.div {...shellMotion} className="mb-6 flex items-start justify-between">
+          <div className="flex items-center gap-4">
+            <div className="relative flex h-14 w-14 items-center justify-center rounded-[18px] border border-white/20 bg-white/10 shadow-[0_18px_32px_rgba(0,0,0,0.15)] backdrop-blur-xl">
+              <GraduationCap className="h-7 w-7 text-white" />
+              <div className="absolute -right-1 -top-1 rounded-full bg-[#6294ff] p-1 shadow-[0_0_18px_rgba(98,148,255,0.45)]">
+                <Sparkles className="h-3 w-3 text-white" />
               </div>
-              <div>
-                <h1 className="font-heading font-bold text-white text-sm">
-                  SET Chatbot
-                </h1>
-                <p className="text-[10px] text-[#FFBA00] uppercase tracking-wider font-medium">
-                  K.R. Mangalam University
-                </p>
-              </div>
-            </motion.div>
+            </div>
+            <div>
+              <p className="section-eyebrow !text-white/55">Scholar Pulse</p>
+              <h1 className="text-xl font-extrabold text-white">KRMU Research OS</h1>
+              <p className="mt-1 text-sm text-white/68">AI-integrated academic platform</p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="rounded-full border border-white/15 bg-white/5 p-2 text-white/70 transition hover:bg-white/10 hover:text-white lg:hidden"
+          >
+            <Menu className="h-4 w-4" />
+          </button>
+        </motion.div>
 
-          {/* Navigation */}
-          <nav className="flex-1 p-4 space-y-1">
-            {navigation.map((item, index) => {
-              const isActive = location.pathname === item.href;
-              return (
-                <motion.div
-                  key={item.name}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <NavLink
-                    to={item.href}
-                    onClick={() => setSidebarOpen(false)}
-                    data-testid={`nav-${item.name.toLowerCase()}`}
-                    className={`
-                      sidebar-link
-                      ${isActive ? "active" : ""}
-                    `}
-                  >
-                    <item.icon className="w-5 h-5" />
-                    <span className="flex-1 font-medium">{item.name}</span>
-                    {isActive && (
-                      <motion.div
-                        layoutId="activeIndicator"
-                        className="text-[#FFBA00]"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </motion.div>
-                    )}
-                  </NavLink>
-                </motion.div>
-              );
-            })}
-          </nav>
+        <motion.div
+          {...shellMotion}
+          transition={{ ...shellMotion.transition, delay: 0.05 }}
+          className="mb-6 rounded-[22px] border border-white/12 bg-white/8 p-4 shadow-[0_24px_40px_rgba(0,0,0,0.12)] backdrop-blur-xl"
+        >
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-sm font-bold text-white">
+              {user?.name?.charAt(0)?.toUpperCase() || "U"}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-white">{user?.name || "Unknown user"}</p>
+              <p className="text-xs text-white/60">{roleLabel[user?.role] || "Scholar"}</p>
+            </div>
+          </div>
+          <div className="rounded-[18px] border border-white/12 bg-[#6294ff]/12 p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <Activity className="h-4 w-4 text-[#cfe0ff]" />
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">Pulse State</p>
+            </div>
+            <p className="text-sm leading-6 text-white/88">
+              Search the knowledge archive, manage indexed materials, and review live academic intelligence from one shell.
+            </p>
+          </div>
+        </motion.div>
 
-          {/* User section */}
-          <div className="p-4 border-t border-[#1e2330]">
+        <nav className="flex-1 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+          {navigation.map((item, index) => (
             <motion.div
+              key={item.href}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-3 mb-4"
+              transition={{ type: "spring", stiffness: 100, damping: 20, delay: 0.08 * index }}
             >
-              {user?.picture ? (
-                <img
-                  src={user.picture}
-                  alt={user.name}
-                  className="w-10 h-10 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-10 h-10 bg-[#FFBA00]/10 rounded-full flex items-center justify-center border border-[#FFBA00]/30">
-                  <span className="text-sm font-bold text-[#FFBA00]">
-                    {user?.name?.charAt(0)?.toUpperCase() || "U"}
-                  </span>
+              <NavLink
+                to={item.href}
+                onClick={() => setSidebarOpen(false)}
+                data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, "-")}`}
+                className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}
+              >
+                <item.icon className="h-5 w-5" />
+                <div className="flex-1">
+                  <p>{item.name}</p>
+                  <p className={`text-xs ${location.pathname === item.href ? "text-[#0b193c]/70" : "text-white/50"}`}>{item.note}</p>
                 </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">
-                  {user?.name}
-                </p>
-                <span
-                  className={`inline-block text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider font-bold ${
-                    roleColors[user?.role] || roleColors.student
-                  }`}
-                >
-                  {user?.role}
-                </span>
-              </div>
+              </NavLink>
             </motion.div>
-            <Button
-              variant="ghost"
-              onClick={logout}
-              data-testid="logout-btn"
-              className="w-full justify-start text-[#9ca3af] hover:text-white hover:bg-[#1e2330] transition-all duration-200"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              Sign out
-            </Button>
-          </div>
-        </div>
+          ))}
+        </nav>
+
+        <motion.div
+          {...shellMotion}
+          transition={{ ...shellMotion.transition, delay: 0.25 }}
+          className="mt-5"
+        >
+          <Button
+            variant="ghost"
+            onClick={logout}
+            data-testid="logout-btn"
+            className="w-full justify-start rounded-full border border-white/12 bg-white/6 px-4 py-6 text-white/78 transition-all hover:bg-white/12 hover:text-white"
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Sign out
+          </Button>
+        </motion.div>
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 flex h-screen flex-col overflow-hidden">
-        {/* Mobile header */}
-        <header className="lg:hidden flex items-center justify-between p-4 border-b border-[#1e2330] bg-[#0f1115]">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 text-[#9ca3af] hover:text-white transition-colors"
-            data-testid="mobile-menu-btn"
-          >
-            <Menu className="w-6 h-6" />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-[#FFBA00] rounded-lg flex items-center justify-center">
-              <GraduationCap className="w-4 h-4 text-[#12151a]" />
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden px-3 pb-3 pt-3 md:px-4 md:pb-4 md:pt-4">
+        <div className="scholar-panel-strong flex min-h-0 flex-1 flex-col overflow-hidden">
+          <header className="flex items-center justify-between border-b border-[#e1e7f5] px-4 py-3 lg:hidden">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              className="rounded-full border border-[#d7dff2] bg-white/75 p-2 text-[#0b193c]"
+              data-testid="mobile-menu-btn"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="text-center">
+              <p className="section-eyebrow">Scholar Pulse</p>
+              <p className="text-sm font-extrabold text-[#0b193c]">KRMU Research OS</p>
             </div>
-            <span className="font-heading font-bold text-white text-sm">
-              SET Chatbot
-            </span>
-          </div>
-          <div className="w-10" /> {/* Spacer for centering */}
-        </header>
+            <div className="h-9 w-9 rounded-full bg-[#eef3ff]" />
+          </header>
 
-        {/* Page content */}
-        <motion.div 
-          key={location.pathname}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-          className="flex-1 min-h-0 overflow-hidden"
-        >
-          <Outlet />
-        </motion.div>
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 100, damping: 20 }}
+            className="flex-1 min-h-0 overflow-hidden"
+          >
+            <Outlet />
+          </motion.div>
+        </div>
       </main>
     </div>
   );

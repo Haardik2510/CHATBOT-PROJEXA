@@ -105,13 +105,13 @@ export default function UsersView() {
 
   const stats = [
     { label: "Total Users", value: roleCounts.total, color: "text-white" },
-    { label: "Students", value: roleCounts.students, color: "text-blue-400" },
-    { label: "Faculty", value: roleCounts.faculty, color: "text-green-400" },
-    { label: "Admins", value: roleCounts.admins, color: "text-[#FFBA00]" },
+    { label: "Students", value: roleCounts.students, color: "text-[#b9ceff]" },
+    { label: "Faculty", value: roleCounts.faculty, color: "text-emerald-300" },
+    { label: "Admins", value: roleCounts.admins, color: "text-[#ffb8bd]" },
   ];
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
+    <div className="scholar-page p-4 md:p-6 space-y-6">
       {/* Header */}
       <motion.div 
         initial={{ opacity: 0, y: -10 }}
@@ -119,15 +119,16 @@ export default function UsersView() {
         className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-[#FFBA00]/10 rounded-xl flex items-center justify-center border border-[#FFBA00]/30">
-            <Users className="w-5 h-5 text-[#FFBA00]" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-[16px] bg-[#0b193c] text-white shadow-[0_14px_26px_rgba(11,25,60,0.16)]">
+            <Users className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-heading font-bold text-white">
-              User Management
+            <p className="section-eyebrow">User Registry</p>
+            <h1 className="page-title mt-2">
+              Community management
             </h1>
-            <p className="text-sm text-[#6b7280]">
-              Manage user accounts and roles
+            <p className="mt-2 text-sm text-[#5c6b8d]">
+              Manage platform membership, roles, and live academic access.
             </p>
           </div>
         </div>
@@ -136,7 +137,7 @@ export default function UsersView() {
           size="sm"
           onClick={fetchUsers}
           data-testid="refresh-users-btn"
-          className="text-[#9ca3af] hover:text-white hover:bg-[#1e2330]"
+          className="btn-secondary h-11"
         >
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
