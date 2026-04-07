@@ -325,71 +325,75 @@ export default function ChatView() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 100, damping: 20 }}
-        className="flex shrink-0 flex-col gap-4 border-b border-[#e1e7f5] bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(248,249,250,0.72))] px-4 py-5 md:px-6"
+        className="flex shrink-0 flex-col gap-3 border-b border-[#e1e7f5] bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,249,250,0.78))] px-4 py-4 md:px-6"
       >
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
             <p className="section-eyebrow">AI Research Chat</p>
             <h1 className="page-title mt-2">Scholar Pulse Conversation Studio</h1>
-            <p className="mt-3 text-sm leading-7 text-[#5c6b8d] md:text-base">
+            <p className="mt-2 max-w-2xl text-sm leading-7 text-[#5c6b8d] md:text-base">
               Database-only mode is active. Every answer is grounded in your indexed academic archive and organized for quick reading.
             </p>
           </div>
-          {messages.length > 0 ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearChat}
-              data-testid="clear-chat-btn"
-              className="btn-secondary h-11 whitespace-nowrap"
-            >
-              <RotateCcw className="mr-2 h-4 w-4" />
-              New Chat
-            </Button>
-          ) : null}
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          {shortcuts.map((shortcut, index) => (
-            <motion.div
-              key={shortcut.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ type: "spring", stiffness: 100, damping: 20, delay: 0.06 * index }}
-              className="inline-flex items-center gap-2 rounded-full border border-[#d7dff2] bg-white/70 px-4 py-2 text-sm font-semibold text-[#0b193c] shadow-[0_8px_18px_rgba(11,25,60,0.06)] transition hover:scale-[1.02] hover:border-[#6294ff]/35 hover:shadow-[0_12px_22px_rgba(98,148,255,0.12)]"
-            >
-              <shortcut.icon className="h-4 w-4 text-[#6294ff]" />
-              <span>{shortcut.label}</span>
-            </motion.div>
-          ))}
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#6294ff]/18 bg-[#eef3ff] px-4 py-2 text-sm font-semibold text-[#24428a]">
-            <BookOpen className="h-4 w-4" />
-            <span>Knowledge database only</span>
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#6294ff]/18 bg-[#eef3ff] px-4 py-2 text-sm font-semibold text-[#24428a]">
+              <BookOpen className="h-4 w-4" />
+              <span>Knowledge database only</span>
+            </div>
+            {messages.length > 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearChat}
+                data-testid="clear-chat-btn"
+                className="btn-secondary h-11 whitespace-nowrap"
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                New Chat
+              </Button>
+            ) : null}
           </div>
         </div>
       </motion.div>
 
       <ScrollArea type="always" className="flex-1 min-h-0">
-        <div className="mx-auto flex max-w-6xl gap-6 px-4 py-6 md:px-6">
-          <div className="min-w-0 flex-1 space-y-5">
+        <div className="mx-auto flex max-w-5xl px-4 py-6 md:px-6">
+          <div className="min-w-0 flex-1 space-y-6">
             {messages.length === 0 ? (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ type: "spring", stiffness: 100, damping: 20 }}
-                className="scholar-panel-strong relative overflow-hidden p-8 md:p-10"
+                className="scholar-panel-strong relative overflow-hidden p-6 md:p-8"
               >
-                <div className="pointer-events-none absolute -right-16 -top-10 h-52 w-52 rounded-full bg-[#6294ff]/14 blur-3xl" />
-                <div className="pointer-events-none absolute bottom-0 left-0 h-44 w-44 rounded-full bg-[#b6171e]/8 blur-3xl" />
-                <div className="relative z-10">
-                  <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-[24px] bg-[#0b193c] text-white shadow-[0_22px_35px_rgba(11,25,60,0.18)]">
-                    <Sparkles className="h-10 w-10" />
+                <div className="pointer-events-none absolute -right-20 -top-16 h-48 w-48 rounded-full bg-[#6294ff]/12 blur-3xl" />
+                <div className="pointer-events-none absolute bottom-0 left-0 h-36 w-36 rounded-full bg-[#b6171e]/7 blur-3xl" />
+                <div className="relative z-10 grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.9fr)] lg:items-start">
+                  <div>
+                    <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-[20px] bg-[#0b193c] text-white shadow-[0_18px_30px_rgba(11,25,60,0.16)]">
+                      <Sparkles className="h-8 w-8" />
+                    </div>
+                    <h2 className="text-[30px] font-extrabold leading-tight text-[#0b193c]">Ask the archive.</h2>
+                    <p className="mt-3 max-w-2xl text-[15px] leading-7 text-[#5c6b8d]">
+                      Start with one focused topic and Scholar Pulse will organize the answer around your indexed KRMU material.
+                    </p>
+                    <div className="mt-5 flex flex-wrap gap-2.5">
+                      {shortcuts.map((shortcut, index) => (
+                        <motion.div
+                          key={shortcut.label}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ type: "spring", stiffness: 100, damping: 20, delay: 0.05 * index }}
+                          className="inline-flex items-center gap-2 rounded-full border border-[#d7dff2] bg-white/75 px-3.5 py-2 text-xs font-semibold text-[#0b193c]"
+                        >
+                          <shortcut.icon className="h-3.5 w-3.5 text-[#6294ff]" />
+                          <span>{shortcut.label}</span>
+                        </motion.div>
+                      ))}
+                    </div>
                   </div>
-                  <h2 className="text-3xl font-extrabold text-[#0b193c]">Ask the archive.</h2>
-                  <p className="mt-3 max-w-2xl text-base leading-8 text-[#5c6b8d]">
-                    Scholar Pulse is tuned for grounded university answers. Ask broad questions for summaries or narrow questions for sharper source-backed detail.
-                  </p>
-                  <div className="mt-8 flex flex-wrap gap-3">
+
+                  <div className="grid gap-3">
                     {suggestions.map((suggestion, index) => (
                       <motion.button
                         key={suggestion}
@@ -397,9 +401,10 @@ export default function ChatView() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ type: "spring", stiffness: 100, damping: 20, delay: 0.08 * index }}
                         onClick={() => setInput(suggestion)}
-                        className="rounded-full border border-[#d7dff2] bg-white/80 px-4 py-3 text-left text-sm font-semibold text-[#0b193c] shadow-[0_10px_20px_rgba(11,25,60,0.06)] transition hover:scale-[1.02] hover:border-[#6294ff]/35 hover:bg-[#eef3ff]"
+                        className="rounded-[18px] border border-[#d7dff2] bg-white/82 px-4 py-4 text-left shadow-[0_10px_20px_rgba(11,25,60,0.05)] transition hover:scale-[1.01] hover:border-[#6294ff]/35 hover:bg-[#eef3ff]"
                       >
-                        {suggestion}
+                        <p className="section-eyebrow">Suggested prompt</p>
+                        <p className="mt-2 text-sm font-semibold leading-6 text-[#0b193c]">{suggestion}</p>
                       </motion.button>
                     ))}
                   </div>
@@ -533,18 +538,6 @@ export default function ChatView() {
 
             <div ref={messagesEndRef} />
           </div>
-
-          <aside className="sticky top-0 hidden w-[280px] shrink-0 self-start xl:block">
-            <div className="scholar-panel p-5">
-              <p className="section-eyebrow">Research Hints</p>
-              <h3 className="mt-2 text-xl font-extrabold text-[#0b193c]">Ask sharper, get stronger grounding</h3>
-              <ul className="mt-4 space-y-3 text-sm leading-6 text-[#5c6b8d]">
-                <li>Ask about one theme at a time: admissions, hostels, placements, or facilities.</li>
-                <li>Use precise nouns from your documents when you want higher-confidence citations.</li>
-                <li>Upload or seed more material when the archive feels thin on a topic.</li>
-              </ul>
-            </div>
-          </aside>
         </div>
       </ScrollArea>
 
@@ -552,9 +545,18 @@ export default function ChatView() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 100, damping: 20 }}
-        className="shrink-0 border-t border-[#e1e7f5] bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(248,249,250,0.98))] px-4 py-4 md:px-6"
+        className="shrink-0 border-t border-[#e1e7f5] bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,249,250,0.98))] px-4 py-4 md:px-6"
       >
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="section-eyebrow">Knowledge Database</p>
+              <p className="text-sm font-semibold text-[#0b193c]">Grounded archive mode</p>
+            </div>
+            <span className="rounded-full border border-[#6294ff]/20 bg-[#eef3ff] px-3 py-1 text-xs font-semibold text-[#24428a]">
+              Database only
+            </span>
+          </div>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             {shortcuts.map((shortcut) => (
               <div
@@ -580,15 +582,6 @@ export default function ChatView() {
             </motion.button>
 
             <div className="scholar-panel flex-1 p-3 md:p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <p className="section-eyebrow">Knowledge Database</p>
-                  <p className="text-sm font-semibold text-[#0b193c]">Grounded archive mode</p>
-                </div>
-                <span className="rounded-full border border-[#6294ff]/20 bg-[#eef3ff] px-3 py-1 text-xs font-semibold text-[#24428a]">
-                  Database only
-                </span>
-              </div>
               <div className="relative">
                 <Textarea
                   value={input}
