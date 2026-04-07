@@ -20,24 +20,24 @@ The app supports local development, Docker-based local setup, and split deployme
 - student, faculty, and admin login flows
 - Supabase email/password and Google sign-in
 - database-grounded chat from indexed KRMU documents
-- internet mode using DuckDuckGo, restricted to official KRMU sites
 - official KRMU happenings/news event summaries with image cards
 - chat-to-PDF export with view, edit, and download actions
 - PDF, DOCX, TXT, CSV, PPTX, and URL ingestion
 - curated KRMU dataset seeding
 - admin analytics, user management, and knowledge-base controls
-- chunk preview, retrieval inspection, inline citations, and confidence labels
+- chunk preview, retrieval inspection, and source-backed answers
 
 ## Current Highlights
 
 - database mode is tuned for grounded KRMU answers
-- internet mode keeps results limited to official `*.krmangalam.edu.in` pages
 - official KRMU happenings/news pages can be used for current event summaries and images
 - chat can export recent messages and event summaries as PDFs
 - Vercel uses `/api/*` rewrites to proxy backend requests to Render
 - bulk document delete is available for admins
 - the chat layout keeps the sidebar and shell fixed while only the message area scrolls
 - the seed dataset now includes more KRMU facility-specific records for hostels, library, campus facilities, research support, transport, placements, and student life
+- answer formatting is cleaner and production-style, with sources shown at the end of each reply
+- an optional large-PDF indexing pipeline is available for heavy documents without making the main Render deploy depend on the full ML stack
 
 ## Tech Stack
 
@@ -92,12 +92,9 @@ The app supports local development, Docker-based local setup, and split deployme
 
 - `Database`
   - uses indexed KRMU documents and seeded knowledge
-  - adds citations and confidence labels
-  - prefers grounded, structured answers
-- `Internet`
-  - uses DuckDuckGo-backed search
-  - filters results to official KRMU domains only
-  - answers only from returned KRMU snippets
+  - keeps answers grounded in retrieved chunks only
+  - shows sources at the end of the response
+  - prefers clean, production-style answers instead of template headings
 
 ### 3. Event & Media Enrichment
 
@@ -142,6 +139,12 @@ The app supports local development, Docker-based local setup, and split deployme
 
 `DOCX` is the reliable Word format. Older `.doc` files are less reliable than `.docx`.
 
+Large PDFs:
+
+- standard uploads continue to use the main document pipeline
+- very large PDFs can use the optional high-capacity indexing path in [`backend/large_pdf_rag.py`](/c:/Users/HP/Desktop/CHATBOT-PROJEXA-walter/backend/large_pdf_rag.py)
+- that advanced path is intentionally optional so the main Render web service can deploy reliably
+
 ## Environment Setup
 
 ## Backend
@@ -184,6 +187,7 @@ Notes:
 - `GEMINI_*` is optional and is only used for official KRMU happenings/news enrichment
 - `EMBEDDING_*` is optional and only needed if you want remote embeddings
 - if `EMBEDDING_*` is not configured, the app falls back to Ollama embeddings and then hash-based safeguards when necessary
+- the advanced large-PDF hybrid pipeline is kept optional and is not required for the normal Render deployment
 
 ## Frontend
 
@@ -375,6 +379,7 @@ Make sure Render has:
 - correct `CORS_ORIGINS`
 - remote LLM env vars if using hosted chat
 - optional `GEMINI_API_KEY` and `GEMINI_MODEL` if you want enriched KRMU event summaries/images
+- the default web service does not need the full optional large-PDF ML dependency stack to start successfully
 
 ### Health checks
 
@@ -396,22 +401,20 @@ It reports key status like:
 - KRMU-only curated dataset expanded for better facility-level answers
 - database retrieval improved with lexical fallback and better grounding logic
 - database answers formatted more cleanly and conservatively
-- internet mode added with DuckDuckGo-backed answers
-- internet results restricted to official KRMU domains
 - official KRMU happenings/news scraping added for event summaries and images
 - optional Gemini enrichment added for event/news responses
 - chunk preview and retrieval inspection tools added for admins
-- confidence labels and inline citations added in chat
+- answer presentation cleaned up so sources appear at the end of the reply
 - duplicate upload prevention added
 - bulk document deletion added
 - chat shell and sidebar layout cleaned up for long conversations
 - Vercel proxy setup added for simpler hosted frontend API calls
 - chat PDF export workflow added with view/edit/download controls
+- optional large-PDF hybrid RAG module added and integrated as a guarded backend path
 
 ## Suggested Usage
 
 - use `Database` mode for campus, admission, hostel, fee, placement, and policy questions
-- use `Internet` mode when you want a live answer from official KRMU webpages
 - ask about `current events`, `latest happenings`, or `tell me about this event` to use the official KRMU happenings/news flow
 - after a useful answer, say `convert this message to pdf` or `export this event summary as pdf` to create a downloadable PDF
 - keep the seeded knowledge base refreshed when the curated dataset changes
