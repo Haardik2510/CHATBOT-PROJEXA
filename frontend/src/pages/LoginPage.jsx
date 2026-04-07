@@ -219,7 +219,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[#f8f9fa]">
+    <div className="min-h-screen overflow-x-hidden bg-[#f8f9fa]">
       <div className="grid min-h-screen lg:grid-cols-[1.08fr_0.92fr]">
         <section className="scholar-hero relative hidden overflow-hidden px-10 py-10 text-white lg:flex lg:flex-col">
           <div className="pointer-events-none absolute inset-0">
