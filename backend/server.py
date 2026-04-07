@@ -80,7 +80,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 PDF_EXPORT_PATTERN = re.compile(
-    r"\b(convert|export|save|turn|make|create)\b.*\b(this|last|latest|previous|above|response|answer|message)\b.*\bpdf\b|\bpdf\b.*\b(this|last|latest|previous|above|response|answer|message)\b",
+    r"\b(convert|export|save|turn|make|create|download)\b.*\b(this|last|latest|previous|above|response|answer|message|summary|event)\b.*\bpdf\b|"
+    r"\bpdf\b.*\b(this|last|latest|previous|above|response|answer|message|summary|event)\b",
     re.IGNORECASE,
 )
 
@@ -596,9 +597,24 @@ def _resolve_pdf_export_source(message: str, conversation_history: Optional[List
     lowered = (message or "").lower()
 
     preferred_role = "assistant"
-    if any(token in lowered for token in ("my message", "my text", "what i wrote", "user message")):
+    if any(token in lowered for token in ("my message", "my text", "what i wrote", "user message", "my last", "my previous", "my latest")):
         preferred_role = "user"
-    elif any(token in lowered for token in ("your response", "your answer", "assistant message", "reply above")):
+    elif any(
+        token in lowered
+        for token in (
+            "your response",
+            "your answer",
+            "assistant message",
+            "reply above",
+            "this answer",
+            "this response",
+            "last answer",
+            "latest answer",
+            "event summary",
+            "this event",
+            "this summary",
+        )
+    ):
         preferred_role = "assistant"
 
     for role in ([preferred_role, "assistant", "user", "system"] if preferred_role == "assistant" else [preferred_role, "assistant", "user"]):
