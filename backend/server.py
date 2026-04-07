@@ -35,6 +35,7 @@ from auth import (
 from document_processor import DocumentProcessor
 from rag_engine import rag_engine, OLLAMA_CHAT_MODEL
 from web_search import WebSearchFallback, get_web_search_fallback
+from events_feed import KRMUEventsFeed
 from app_store import AppStore, utc_now_iso
 from supabase_client import (
     SUPABASE_ANON_KEY,
@@ -580,6 +581,37 @@ async def _resolve_internet_chat_result(
     }, True
 
 
+async def _resolve_event_chat_result(
+    message: str,
+    conversation_history: Optional[List[Dict]] = None,
+) -> Optional[tuple[dict, bool]]:
+    """Resolve event/news questions from the official KRMU happenings feed."""
+    if not KRMUEventsFeed.is_event_query(message):
+        return None
+
+    try:
+        events = await KRMUEventsFeed.search_events(message, conversation_history=conversation_history, max_events=3)
+    except Exception as exc:
+        logger.exception("KRMU events pipeline failed for message %s: %s", message, exc)
+        return None
+
+    if not events:
+        return None
+
+    return (
+        {
+            "response": KRMUEventsFeed.summarize_events(
+                message,
+                events,
+                conversation_history=conversation_history,
+            ),
+            "sources": KRMUEventsFeed.build_sources(events),
+            "images": KRMUEventsFeed.build_image_payload(events),
+        },
+        True,
+    )
+
+
 async def _resolve_chat_result(
     message: str,
     answer_mode: str = "database",
@@ -605,6 +637,10 @@ async def _resolve_chat_result(
     is_web_fallback = False
     rag_result = _default_chat_result()
 
+    event_result = await _resolve_event_chat_result(message, conversation_history=conversation_history)
+    if event_result:
+        return event_result
+
     try:
         rag_result = rag_engine.chat(message, conversation_history=conversation_history)
 
@@ -612,7 +648,7 @@ async def _resolve_chat_result(
             rag_result = {
                 "response": (
                     "I couldn't find a sufficiently grounded answer in the indexed knowledge base. "
-                    "Please rephrase the question, switch to Internet mode, or upload/seed more relevant documents."
+                    "Please rephrase the question or upload/seed more relevant documents."
                 ),
                 "sources": rag_result.get("sources", []),
                 "images": rag_result.get("images", []),
@@ -1891,6 +1927,7 @@ async def health_check():
             "embedding_provider": rag_stats.get("embedding_provider", "unknown"),
             "embedding_model": rag_stats.get("embedding_model", "unknown"),
             "web_fallback_enabled": ENABLE_WEB_FALLBACK,
+            "gemini_events": KRMUEventsFeed.gemini_status(),
         }
     }
 
