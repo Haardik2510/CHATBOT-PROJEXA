@@ -131,3 +131,16 @@ def upload_bytes(
         file_options={"content-type": content_type, "upsert": "true"},
     )
     return path
+
+
+def download_bytes(
+    path: str,
+    bucket_name: Optional[str] = None,
+) -> Optional[bytes]:
+    """Download bytes from the configured Supabase Storage bucket."""
+    client = get_supabase_admin_client()
+    if not client or not path:
+        return None
+
+    bucket = client.storage.from_(bucket_name or SUPABASE_STORAGE_BUCKET)
+    return bucket.download(path)

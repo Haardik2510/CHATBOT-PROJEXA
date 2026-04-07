@@ -1,5 +1,6 @@
 """Main FastAPI application for SET Academic Chatbot"""
 import json
+import base64
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, BackgroundTasks, Request, Response
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -21,7 +22,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 from models import (
     UserCreate, UserLogin, UserResponse, TokenResponse, User,
-    Document, DocumentResponse, ChatRequest, ChatResponse, SourceCitation,
+    Document, DocumentResponse, ChatRequest, ChatResponse, SourceCitation, ChatImage,
     ChatSession, QueryLog, AnalyticsOverview, DailyStats, URLScrapeRequest,
     DocumentChunkPreview, DocumentChunkPreviewResponse,
     RetrievalEvaluationRequest, RetrievalEvaluationResponse,
@@ -43,6 +44,7 @@ from supabase_client import (
     get_supabase_admin_client,
     get_supabase_public_client,
     has_supabase_config,
+    download_bytes,
     upload_bytes,
 )
 
@@ -375,7 +377,8 @@ def _default_chat_result() -> dict:
             "I'm sorry, but I couldn't generate a full answer right now. "
             "Please try again in a moment."
         ),
-        "sources": []
+        "sources": [],
+        "images": [],
     }
 
 
@@ -397,6 +400,92 @@ def _build_source_citations(source_payload: list) -> List[SourceCitation]:
         )
         for source in source_payload
     ]
+
+
+def _store_document_images(document_id: str, image_payload: list) -> List[dict]:
+    """Persist extracted document images and return lightweight metadata refs."""
+    stored_images = []
+
+    for index, image in enumerate(image_payload[:4], start=1):
+        content = image.get("content")
+        content_type = image.get("content_type", "image/jpeg")
+        filename = image.get("filename", f"image-{index}.jpg")
+        sanitized_name = f"media-{index}-{Path(filename).name}".replace(" ", "-")
+
+        if content:
+            storage_path = f"{document_id}/media/{sanitized_name}"
+            uploaded_path = upload_bytes(storage_path, content, content_type, SUPABASE_STORAGE_BUCKET)
+            if not uploaded_path:
+                continue
+
+            stored_images.append(
+                {
+                    "storage_bucket": SUPABASE_STORAGE_BUCKET,
+                    "storage_path": uploaded_path,
+                    "content_type": content_type,
+                    "alt": image.get("alt", ""),
+                    "source_title": image.get("source_title", ""),
+                    "origin": "document",
+                }
+            )
+            continue
+
+        direct_url = (image.get("url") or "").strip()
+        if direct_url:
+            stored_images.append(
+                {
+                    "url": direct_url,
+                    "alt": image.get("alt", ""),
+                    "source_title": image.get("source_title", ""),
+                    "source_url": image.get("source_url"),
+                    "origin": image.get("origin", "website"),
+                }
+            )
+
+    return stored_images
+
+
+def _build_chat_images(image_payload: list) -> List[ChatImage]:
+    """Resolve image refs into API models that the frontend can render directly."""
+    chat_images: List[ChatImage] = []
+    seen = set()
+
+    for image in image_payload[:4]:
+        key = image.get("storage_path") or image.get("url")
+        if not key or key in seen:
+            continue
+
+        image_url = None
+        if image.get("storage_path"):
+            try:
+                raw_bytes = download_bytes(
+                    image["storage_path"],
+                    bucket_name=image.get("storage_bucket") or SUPABASE_STORAGE_BUCKET,
+                )
+                if raw_bytes:
+                    content_type = image.get("content_type", "image/jpeg")
+                    encoded = base64.b64encode(raw_bytes).decode("ascii")
+                    image_url = f"data:{content_type};base64,{encoded}"
+            except Exception as exc:
+                logger.debug("Could not resolve stored image %s: %s", image.get("storage_path"), exc)
+        else:
+            image_url = (image.get("url") or "").strip()
+
+        if not image_url:
+            continue
+
+        chat_images.append(
+            ChatImage(
+                url=image_url,
+                alt=image.get("alt", ""),
+                source_title=image.get("source_title", ""),
+                source_url=image.get("source_url"),
+                origin=image.get("origin", "document"),
+            )
+        )
+        seen.add(key)
+
+    return chat_images
 
 
 def _normalize_document_filename(value: Optional[str]) -> str:
@@ -479,6 +568,7 @@ async def _resolve_internet_chat_result(
     if not search_results:
         return await get_web_search_fallback(message), True
 
+    image_payload = await WebSearchFallback.build_image_payload(search_results)
     return {
         "response": rag_engine.generate_web_response(
             message,
@@ -486,6 +576,7 @@ async def _resolve_internet_chat_result(
             conversation_history=conversation_history,
         ),
         "sources": WebSearchFallback.build_sources(search_results),
+        "images": image_payload,
     }, True
 
 
@@ -508,6 +599,7 @@ async def _resolve_chat_result(
                     "Please try again in a moment."
                 ),
                 "sources": [],
+                "images": [],
             }, True
 
     is_web_fallback = False
@@ -523,6 +615,7 @@ async def _resolve_chat_result(
                     "Please rephrase the question, switch to Internet mode, or upload/seed more relevant documents."
                 ),
                 "sources": rag_result.get("sources", []),
+                "images": rag_result.get("images", []),
             }
     except Exception as exc:
         logger.exception("Chat pipeline failed for message %s: %s", message, exc)
@@ -532,6 +625,7 @@ async def _resolve_chat_result(
                 "Please try again in a moment."
             ),
             "sources": [],
+            "images": [],
         }
 
     return rag_result, is_web_fallback
@@ -968,6 +1062,7 @@ async def chat(
         )
         for s in rag_result.get("sources", [])
     ]
+    images = _build_chat_images(rag_result.get("images", []))
     
     # Log query for analytics
     processing_time = int((time.time() - start_time) * 1000)
@@ -985,6 +1080,7 @@ async def chat(
     return ChatResponse(
         response=rag_result["response"],
         sources=sources,
+        images=images,
         session_id=session_id,
         voice_output=chat_request.voice_input,
         answer_mode=answer_mode,
@@ -1011,6 +1107,7 @@ async def chat_stream(
             conversation_history=conversation_history,
         )
         sources = _build_source_citations(rag_result.get("sources", []))
+        images = _build_chat_images(rag_result.get("images", []))
 
         async def internet_stream():
             yield _sse_event(
@@ -1018,6 +1115,7 @@ async def chat_stream(
                     "type": "meta",
                     "session_id": session_id,
                     "sources": rag_result.get("sources", []),
+                    "images": [image.model_dump() for image in images],
                     "is_web_fallback": is_web_fallback,
                     "answer_mode": answer_mode,
                 }
@@ -1053,6 +1151,7 @@ async def chat_stream(
             conversation_history=conversation_history,
         )
         sources = _build_source_citations(rag_result.get("sources", []))
+        images = _build_chat_images(rag_result.get("images", []))
 
         async def fallback_stream():
             yield _sse_event(
@@ -1060,6 +1159,7 @@ async def chat_stream(
                     "type": "meta",
                     "session_id": session_id,
                     "sources": rag_result.get("sources", []),
+                    "images": [image.model_dump() for image in images],
                     "is_web_fallback": is_web_fallback,
                     "answer_mode": answer_mode,
                 }
@@ -1086,6 +1186,7 @@ async def chat_stream(
         )
 
     sources = _build_source_citations(source_payload)
+    streamed_images = _build_chat_images(rag_engine.format_images(retrieved_docs))
 
     async def event_stream():
         response_parts = []
@@ -1095,6 +1196,7 @@ async def chat_stream(
                 "type": "meta",
                 "session_id": session_id,
                 "sources": source_payload,
+                "images": [image.model_dump() for image in streamed_images],
                 "is_web_fallback": False,
                 "answer_mode": answer_mode,
             }
@@ -1211,7 +1313,8 @@ async def process_document_background(
                 {"status": "failed", "error_message": result.get("error", "Unknown error")},
             )
             return
-        
+
+        image_refs = _store_document_images(document_id, result.get("images", []))
         indexing_timeout = _document_index_timeout_seconds(len(result.get("chunks") or []), file_size)
 
         # Add to RAG engine
@@ -1225,6 +1328,7 @@ async def process_document_background(
                 "used_ocr": bool(result.get("used_ocr")),
                 "ocr_engine": result.get("ocr_engine", ""),
                 "ocr_quality_score": float(result.get("ocr_quality_score", 0.0) or 0.0),
+                "images": image_refs,
             }
         )
         if disable_global_timeout:
@@ -1442,7 +1546,11 @@ async def add_url_document(
                 document_id=doc_id,
                 document_title=title or result.get("title", url),
                 chunks=result["chunks"],
-                metadata={"doc_type": "url", "source_url": url}
+                metadata={
+                    "doc_type": "url",
+                    "source_url": url,
+                    "images": result.get("images", []),
+                }
             )
             
             await store.update_document(

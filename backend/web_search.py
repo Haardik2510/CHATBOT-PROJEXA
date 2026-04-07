@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 from bs4 import BeautifulSoup
 import re
 from urllib.parse import urlparse
+from document_processor import DocumentProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +200,51 @@ class WebSearchFallback:
             }
             for i, r in enumerate(results)
         ]
+
+    @classmethod
+    async def build_image_payload(cls, results: List[Dict], max_images: int = 4) -> List[Dict]:
+        """Fetch a few useful images from official result pages."""
+        if not results or max_images <= 0:
+            return []
+
+        extracted_images = []
+        seen_urls = set()
+
+        async with httpx.AsyncClient(
+            timeout=12.0,
+            follow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+        ) as client:
+            for result in results[:2]:
+                if len(extracted_images) >= max_images:
+                    break
+
+                page_url = result.get("url", "")
+                if not page_url:
+                    continue
+
+                try:
+                    response = await client.get(page_url)
+                    response.raise_for_status()
+                    soup = BeautifulSoup(response.text, "lxml")
+                    page_images = DocumentProcessor.extract_html_images(
+                        soup,
+                        page_url,
+                        source_title=result.get("title", ""),
+                        max_images=max_images - len(extracted_images),
+                    )
+                    for image in page_images:
+                        image_url = (image.get("url") or "").strip()
+                        if not image_url or image_url in seen_urls:
+                            continue
+                        extracted_images.append(image)
+                        seen_urls.add(image_url)
+                        if len(extracted_images) >= max_images:
+                            break
+                except Exception as exc:
+                    logger.debug("Skipping web image extraction for %s: %s", page_url, exc)
+
+        return extracted_images[:max_images]
 
 
 # For RAG integration
