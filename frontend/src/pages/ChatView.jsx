@@ -17,7 +17,6 @@ import {
   FileText,
   Sparkles,
   RotateCcw,
-  BookOpen,
   ScanSearch,
   FileStack,
 } from "lucide-react";
@@ -325,21 +324,21 @@ export default function ChatView() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 100, damping: 20 }}
-        className="flex shrink-0 flex-col gap-3 border-b border-[#e1e7f5] bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,249,250,0.78))] px-4 py-4 md:px-6"
+        className="flex shrink-0 flex-col gap-2 border-b border-[#e1e7f5] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,249,250,0.8))] px-4 py-3 md:px-6"
       >
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className={messages.length > 0 ? "max-w-2xl" : "max-w-3xl"}>
             <p className="section-eyebrow">AI Research Chat</p>
-            <h1 className="page-title mt-2">Scholar Pulse Conversation Studio</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-7 text-[#5c6b8d] md:text-base">
-              Database-only mode is active. Every answer is grounded in your indexed academic archive and organized for quick reading.
-            </p>
+            <h1 className={`${messages.length > 0 ? "mt-1 text-[30px] md:text-[34px]" : "page-title mt-2"} font-extrabold text-[#0b193c]`}>
+              Scholar Pulse Conversation Studio
+            </h1>
+            {messages.length === 0 ? (
+              <p className="mt-2 max-w-2xl text-sm leading-7 text-[#5c6b8d] md:text-base">
+                Database-only mode is active. Every answer is grounded in your indexed academic archive and organized for quick reading.
+              </p>
+            ) : null}
           </div>
           <div className="flex items-center gap-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#6294ff]/18 bg-[#eef3ff] px-4 py-2 text-sm font-semibold text-[#24428a]">
-              <BookOpen className="h-4 w-4" />
-              <span>Knowledge database only</span>
-            </div>
             {messages.length > 0 ? (
               <Button
                 variant="ghost"
@@ -548,26 +547,6 @@ export default function ChatView() {
         className="shrink-0 border-t border-[#e1e7f5] bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,249,250,0.98))] px-4 py-4 md:px-6"
       >
         <div className="mx-auto max-w-5xl">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="section-eyebrow">Knowledge Database</p>
-              <p className="text-sm font-semibold text-[#0b193c]">Grounded archive mode</p>
-            </div>
-            <span className="rounded-full border border-[#6294ff]/20 bg-[#eef3ff] px-3 py-1 text-xs font-semibold text-[#24428a]">
-              Database only
-            </span>
-          </div>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            {shortcuts.map((shortcut) => (
-              <div
-                key={shortcut.label}
-                className="inline-flex items-center gap-2 rounded-full border border-[#d7dff2] bg-white/80 px-3 py-1.5 text-xs font-semibold text-[#0b193c]"
-              >
-                <shortcut.icon className="h-3.5 w-3.5 text-[#6294ff]" />
-                {shortcut.label}
-              </div>
-            ))}
-          </div>
           <div className="flex items-end gap-3">
             <motion.button
               whileHover={{ scale: 1.04 }}

@@ -185,7 +185,7 @@ export default function UsersView() {
               {isLoading ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-[#FFBA00]" />
+                    <div className="mx-auto scholar-loader scholar-loader-sm" />
                   </TableCell>
                 </TableRow>
               ) : users.length === 0 ? (

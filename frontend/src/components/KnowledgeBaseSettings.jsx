@@ -130,7 +130,7 @@ export default function KnowledgeBaseSettings() {
   if (isLoading) {
     return (
       <div className="p-6 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-[#FFBA00]" />
+        <div className="scholar-loader scholar-loader-sm" />
       </div>
     );
   }

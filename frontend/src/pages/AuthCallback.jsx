@@ -26,9 +26,9 @@ export default function AuthCallback() {
   }
 
   return (
-    <div className="min-h-screen bg-[#12151a] flex items-center justify-center">
+    <div className="min-h-screen scholar-hero flex items-center justify-center">
       <div className="text-center">
-        <div className="w-12 h-12 border-4 border-[#FFBA00] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <div className="mx-auto mb-4 scholar-loader on-dark" />
         <p className="text-white font-heading">Completing sign-in...</p>
       </div>
     </div>
