@@ -25,6 +25,7 @@ export default function DashboardLayout() {
   const { user, logout, isFaculty, isAdmin } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const isChatRoute = location.pathname === "/chat";
 
   const navigation = [
     { name: "Research Chat", href: "/chat", icon: MessageSquare, show: true, note: "Living archive" },
@@ -171,7 +172,7 @@ export default function DashboardLayout() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: "spring", stiffness: 100, damping: 20 }}
-            className="flex-1 min-h-0 overflow-hidden"
+            className={`flex-1 min-h-0 ${isChatRoute ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden"}`}
           >
             <Outlet />
           </motion.div>
