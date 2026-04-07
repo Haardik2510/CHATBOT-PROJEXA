@@ -4,14 +4,17 @@ import logging
 import mimetypes
 import os
 import re
-from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
-from google import genai
-from google.genai import types
+try:
+    from google import genai
+    from google.genai import types
+except Exception:  # pragma: no cover - optional dependency in some envs
+    genai = None
+    types = None
 
 from document_processor import DocumentProcessor
 
@@ -24,7 +27,7 @@ class GeminiEventEnhancer:
     def __init__(self):
         self.api_key = os.environ.get("GEMINI_API_KEY", "").strip()
         self.model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
-        self.client = genai.Client(api_key=self.api_key) if self.api_key else None
+        self.client = genai.Client(api_key=self.api_key) if (self.api_key and genai is not None) else None
         self.is_available = bool(self.client)
 
     @staticmethod
@@ -73,8 +76,11 @@ class GeminiEventEnhancer:
         return "\n".join(lines)
 
     @staticmethod
-    def _fetch_image_parts(events: List[Dict], max_images: int = 2) -> List[types.Part]:
-        image_parts: List[types.Part] = []
+    def _fetch_image_parts(events: List[Dict], max_images: int = 2) -> List[Any]:
+        if types is None:
+            return []
+
+        image_parts: List[Any] = []
 
         for event in events:
             for image in event.get("images", [])[:max_images]:
@@ -192,6 +198,13 @@ class KRMUEventsFeed:
     _gemini = GeminiEventEnhancer()
 
     @classmethod
+    def _http_session(cls) -> requests.Session:
+        session = requests.Session()
+        session.trust_env = False
+        session.headers.update({"User-Agent": cls.USER_AGENT})
+        return session
+
+    @classmethod
     def is_event_query(cls, query: str) -> bool:
         lowered = (query or "").lower()
         if not lowered.strip():
@@ -201,11 +214,8 @@ class KRMUEventsFeed:
     @classmethod
     def _get_soup(cls, url: str) -> Optional[BeautifulSoup]:
         try:
-            response = requests.get(
-                url,
-                timeout=20,
-                headers={"User-Agent": cls.USER_AGENT},
-            )
+            with cls._http_session() as session:
+                response = session.get(url, timeout=20)
             response.raise_for_status()
             return BeautifulSoup(response.text, "lxml")
         except Exception as exc:
