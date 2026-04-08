@@ -2,11 +2,10 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/button";
+import KRMULogo from "../components/KRMULogo";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
-  Brain,
-  GraduationCap,
   Mail,
   ShieldCheck,
   Sparkles,
@@ -235,8 +234,8 @@ export default function LoginPage() {
             transition={{ type: "spring", stiffness: 100, damping: 20 }}
             className="relative z-10 flex items-center gap-4"
           >
-            <div className="flex h-16 w-16 items-center justify-center rounded-[18px] border border-white/15 bg-white/10 backdrop-blur-xl">
-              <GraduationCap className="h-8 w-8 text-white" />
+            <div className="flex h-20 w-20 items-center justify-center rounded-[22px] border border-white/15 bg-white/10 p-1.5 backdrop-blur-xl">
+              <KRMULogo className="h-full w-full object-contain drop-shadow-[0_12px_20px_rgba(0,0,0,0.18)]" size={72} />
             </div>
             <div>
               <p className="text-smallcaps text-white/60">Scholar Pulse</p>
@@ -271,7 +270,9 @@ export default function LoginPage() {
                 <div className="absolute inset-16 rounded-full border border-[#6294ff]/35 shadow-[0_0_50px_rgba(98,148,255,0.22)] animate-breathe" />
                 <div className="absolute inset-24 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.16),rgba(255,255,255,0.04),transparent_74%)]" />
                 <div className="absolute inset-[30%] rounded-full border border-white/12 bg-white/10 backdrop-blur-xl animate-float" />
-                <Brain className="relative z-10 h-24 w-24 text-white" />
+                <div className="relative z-10 flex h-36 w-36 items-center justify-center rounded-[32px] border border-white/14 bg-white/10 p-3 shadow-[0_24px_44px_rgba(0,0,0,0.16)] backdrop-blur-xl">
+                  <KRMULogo className="h-full w-full object-contain drop-shadow-[0_16px_24px_rgba(0,0,0,0.18)]" size={120} />
+                </div>
                 <Orbit className="absolute right-14 top-14 h-16 w-16 text-[#cfe0ff]" />
                 <Sparkles className="absolute bottom-16 left-16 h-14 w-14 text-[#cfe0ff]" />
               </motion.div>
@@ -306,8 +307,8 @@ export default function LoginPage() {
             className="relative z-10 w-full max-w-[560px]"
           >
             <div className="mb-6 lg:hidden">
-              <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-[18px] bg-[#0b193c] text-white shadow-[0_16px_28px_rgba(11,25,60,0.18)]">
-                <GraduationCap className="h-7 w-7" />
+              <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-[18px] bg-[#0b193c] p-1.5 text-white shadow-[0_16px_28px_rgba(11,25,60,0.18)]">
+                <KRMULogo className="h-full w-full object-contain" size={56} />
               </div>
               <p className="section-eyebrow">Scholar Pulse</p>
               <h1 className="mt-2 text-3xl font-extrabold text-[#0b193c]">KRMU Research OS</h1>

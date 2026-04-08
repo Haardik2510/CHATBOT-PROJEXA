@@ -36,9 +36,12 @@ const shortcuts = [
 ];
 
 const suggestions = [
-  "Tell me about K.R. Mangalam University campus facilities",
-  "What are the admission requirements for B.Tech?",
-  "Summarize hostel facilities and student life",
+  "What are the latest events in KRMU right now?",
+  "What are the key highlights from the B.Tech programme handbook?",
+  "Summarize hostel facilities, safety, and student support.",
+  "What does the KRMU library offer for study and research?",
+  "What are the scholarship and admission support options for new students?",
+  "Give me the main placement and recruiter highlights for KRMU.",
 ];
 
 const PDF_EXPORT_PATTERN =

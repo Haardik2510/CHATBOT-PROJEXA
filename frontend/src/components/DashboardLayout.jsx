@@ -3,6 +3,7 @@ import { Outlet, NavLink, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "./ui/button";
+import KRMULogo from "./KRMULogo";
 import {
   MessageSquare,
   FileText,
@@ -10,8 +11,6 @@ import {
   Users,
   LogOut,
   Menu,
-  GraduationCap,
-  Sparkles,
   Activity,
 } from "lucide-react";
 
@@ -62,11 +61,8 @@ export default function DashboardLayout() {
       >
         <motion.div {...shellMotion} className="mb-6 flex items-start justify-between">
           <div className="flex items-center gap-4">
-            <div className="relative flex h-14 w-14 items-center justify-center rounded-[18px] border border-white/20 bg-white/10 shadow-[0_18px_32px_rgba(0,0,0,0.15)] backdrop-blur-xl">
-              <GraduationCap className="h-7 w-7 text-white" />
-              <div className="absolute -right-1 -top-1 rounded-full bg-[#6294ff] p-1 shadow-[0_0_18px_rgba(98,148,255,0.45)]">
-                <Sparkles className="h-3 w-3 text-white" />
-              </div>
+            <div className="flex h-16 w-16 items-center justify-center rounded-[20px] border border-white/18 bg-white/8 p-1.5 shadow-[0_18px_32px_rgba(0,0,0,0.16)] backdrop-blur-xl">
+              <KRMULogo className="h-full w-full object-contain drop-shadow-[0_10px_18px_rgba(0,0,0,0.18)]" size={52} />
             </div>
             <div>
               <p className="section-eyebrow !text-white/55">Scholar Pulse</p>
@@ -164,7 +160,9 @@ export default function DashboardLayout() {
               <p className="section-eyebrow">Scholar Pulse</p>
               <p className="text-sm font-extrabold text-[#0b193c]">KRMU Research OS</p>
             </div>
-            <div className="h-9 w-9 rounded-full bg-[#eef3ff]" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#eef3ff] p-1">
+              <KRMULogo className="h-full w-full object-contain" size={28} />
+            </div>
           </header>
 
           <motion.div

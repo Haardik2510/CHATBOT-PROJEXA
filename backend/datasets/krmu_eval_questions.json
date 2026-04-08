@@ -1,0 +1,194 @@
+[
+  {
+    "id": "overview_01",
+    "category": "overview",
+    "question": "Tell me about K.R. Mangalam University.",
+    "expected_keywords": ["overview", "established", "location", "ugc"]
+  },
+  {
+    "id": "overview_02",
+    "category": "overview",
+    "question": "What are the key highlights of KRMU as a university?",
+    "expected_keywords": ["overview", "schools", "campus", "programmes"]
+  },
+  {
+    "id": "admission_01",
+    "category": "admissions",
+    "question": "What are the admission requirements for B.Tech?",
+    "expected_keywords": ["admission", "eligibility", "b.tech", "entrance"]
+  },
+  {
+    "id": "admission_02",
+    "category": "admissions",
+    "question": "How does the admission process work at KRMU?",
+    "expected_keywords": ["admission", "verification", "counselling", "enrollment"]
+  },
+  {
+    "id": "admission_03",
+    "category": "admissions",
+    "question": "What scholarships are available for new students?",
+    "expected_keywords": ["scholarship", "admission", "merit"]
+  },
+  {
+    "id": "academics_01",
+    "category": "academics",
+    "question": "What are the main highlights of the B.Tech programme handbook?",
+    "expected_keywords": ["programme", "curriculum", "outcomes", "b.tech"]
+  },
+  {
+    "id": "academics_02",
+    "category": "academics",
+    "question": "What academic schools are part of KRMU?",
+    "expected_keywords": ["school", "engineering", "management", "legal"]
+  },
+  {
+    "id": "academics_03",
+    "category": "academics",
+    "question": "What support is available for research and innovation?",
+    "expected_keywords": ["research", "innovation", "incubation", "centre"]
+  },
+  {
+    "id": "hostel_01",
+    "category": "hostel",
+    "question": "What hostel facilities are available at KRMU?",
+    "expected_keywords": ["hostel", "rooms", "mess", "security"]
+  },
+  {
+    "id": "hostel_02",
+    "category": "hostel",
+    "question": "How safe is the student hostel environment?",
+    "expected_keywords": ["hostel", "security", "warden", "safety"]
+  },
+  {
+    "id": "hostel_03",
+    "category": "hostel",
+    "question": "Summarize hostel life and student support.",
+    "expected_keywords": ["hostel", "student", "support", "facilities"]
+  },
+  {
+    "id": "library_01",
+    "category": "library",
+    "question": "What does the KRMU library offer?",
+    "expected_keywords": ["library", "books", "journals", "digital"]
+  },
+  {
+    "id": "library_02",
+    "category": "library",
+    "question": "What research resources are available in the library?",
+    "expected_keywords": ["library", "research", "journals", "database"]
+  },
+  {
+    "id": "campus_01",
+    "category": "campus",
+    "question": "What are the main campus facilities at KRMU?",
+    "expected_keywords": ["campus", "facilities", "labs", "classrooms"]
+  },
+  {
+    "id": "campus_02",
+    "category": "campus",
+    "question": "Tell me about classrooms, labs, and infrastructure.",
+    "expected_keywords": ["labs", "classrooms", "infrastructure", "facility"]
+  },
+  {
+    "id": "campus_03",
+    "category": "campus",
+    "question": "What transport support is available for students?",
+    "expected_keywords": ["transport", "bus", "commute"]
+  },
+  {
+    "id": "placement_01",
+    "category": "placements",
+    "question": "What are the placement highlights of KRMU?",
+    "expected_keywords": ["placement", "recruiter", "career", "ctc"]
+  },
+  {
+    "id": "placement_02",
+    "category": "placements",
+    "question": "Which recruiters and career support services are mentioned?",
+    "expected_keywords": ["recruiter", "career", "development", "placement"]
+  },
+  {
+    "id": "placement_03",
+    "category": "placements",
+    "question": "What does the Career Development Centre do?",
+    "expected_keywords": ["career", "development", "centre", "training"]
+  },
+  {
+    "id": "studentlife_01",
+    "category": "student_life",
+    "question": "What is student life like at KRMU?",
+    "expected_keywords": ["student life", "clubs", "events", "campus"]
+  },
+  {
+    "id": "studentlife_02",
+    "category": "student_life",
+    "question": "What campus events and happenings are going on at KRMU?",
+    "expected_keywords": ["event", "happenings", "festival", "krmu"]
+  },
+  {
+    "id": "studentlife_03",
+    "category": "student_life",
+    "question": "Tell me about Ideas 3.0 at KRMU.",
+    "expected_keywords": ["ideas 3.0", "event", "krmu"]
+  },
+  {
+    "id": "support_01",
+    "category": "support",
+    "question": "What student support services are available on campus?",
+    "expected_keywords": ["student support", "counselling", "help", "support"]
+  },
+  {
+    "id": "support_02",
+    "category": "support",
+    "question": "What medical and wellness facilities are available?",
+    "expected_keywords": ["medical", "wellness", "health", "ambulance"]
+  },
+  {
+    "id": "facilities_01",
+    "category": "facilities",
+    "question": "What dining or cafeteria facilities are available?",
+    "expected_keywords": ["cafeteria", "food", "dining", "canteen"]
+  },
+  {
+    "id": "facilities_02",
+    "category": "facilities",
+    "question": "What sports and recreation facilities are available?",
+    "expected_keywords": ["sports", "recreation", "gym", "facility"]
+  },
+  {
+    "id": "facilities_03",
+    "category": "facilities",
+    "question": "What technology-enabled learning spaces are mentioned?",
+    "expected_keywords": ["smart classroom", "lab", "technology", "learning"]
+  },
+  {
+    "id": "policy_01",
+    "category": "policy",
+    "question": "What does the university say about discipline or code of conduct?",
+    "expected_keywords": ["discipline", "policy", "code", "conduct"]
+  },
+  {
+    "id": "policy_02",
+    "category": "policy",
+    "question": "What anti-ragging or safety policy information is available?",
+    "expected_keywords": ["anti-ragging", "policy", "safety"]
+  },
+  {
+    "id": "followup_01",
+    "category": "follow_up",
+    "question": "What about the fees?",
+    "expected_keywords": ["fee", "payment", "admission"]
+  },
+  {
+    "id": "followup_02",
+    "category": "follow_up",
+    "question": "And what about placements?",
+    "expected_keywords": ["placement", "recruiter", "career"]
+  },
+  {
+    "id": "followup_03",
+    "category": "follow_up",
+    "question": "What about hostel safety?",
+    "expected_keywords": ["hostel", "security", "safety"]
+  }
+]

@@ -548,9 +548,15 @@ class RAGEngine:
         return terms
 
     @classmethod
-    def _score_lexical_match(cls, query: str, chunk_text: str, document_title: str = "") -> float:
+    def _score_lexical_match(
+        cls,
+        query: str,
+        chunk_text: str,
+        document_title: str = "",
+        section_title: str = "",
+    ) -> float:
         """Score lexical similarity between the query and a chunk/title."""
-        haystack = f"{document_title} {chunk_text}".lower()
+        haystack = f"{document_title} {section_title} {chunk_text}".lower()
         query_text = (query or "").strip().lower()
         if not haystack.strip() or not query_text:
             return 0.0
@@ -580,8 +586,139 @@ class RAGEngine:
             title_matches = sum(1 for term in query_terms if term in title_lower)
             score += 0.15 * (title_matches / len(query_terms))
 
+        if section_title:
+            section_lower = section_title.lower()
+            section_matches = sum(1 for term in query_terms if term in section_lower)
+            score += 0.12 * (section_matches / len(query_terms))
+
         score += cls._intent_score_adjustment(query_text, haystack)
         return min(score, 1.0)
+
+    @staticmethod
+    def _looks_like_follow_up(query: str) -> bool:
+        """Detect short follow-up prompts that need previous-turn context."""
+        lowered = (query or "").strip().lower()
+        if not lowered:
+            return False
+
+        follow_up_starters = (
+            "what about",
+            "how about",
+            "and ",
+            "also ",
+            "then ",
+            "now ",
+            "its ",
+            "their ",
+            "those ",
+            "that ",
+            "this ",
+            "these ",
+            "fees?",
+            "placements?",
+            "hostels?",
+            "scholarships?",
+        )
+        follow_up_tokens = {"it", "its", "they", "them", "their", "that", "this", "those", "these"}
+        query_terms = RAGEngine._extract_query_terms(lowered, max_terms=12)
+
+        return (
+            len(query_terms) <= 5
+            and (
+                lowered.endswith("?")
+                or lowered.startswith(follow_up_starters)
+                or any(token in follow_up_tokens for token in query_terms[:2])
+            )
+        )
+
+    @classmethod
+    def _rewrite_query_with_history(cls, query: str, conversation_history: Optional[List[Dict]] = None) -> str:
+        """Rewrite short follow-up questions so retrieval keeps the active topic."""
+        if not cls._looks_like_follow_up(query) or not conversation_history:
+            return query
+
+        latest_user_topic = ""
+        latest_assistant_context = ""
+        for turn in reversed(conversation_history or []):
+            content = " ".join((turn.get("content") or "").split())
+            if not content:
+                continue
+            if turn.get("role") == "assistant" and not latest_assistant_context:
+                latest_assistant_context = content[:220]
+            if turn.get("role") == "user":
+                latest_user_topic = content
+                break
+
+        anchor = latest_user_topic or latest_assistant_context
+        if not anchor:
+            return query
+
+        return f"{anchor}\nFollow-up question: {query}"
+
+    @classmethod
+    def _rerank_results(cls, query: str, items: List[Dict], top_k: int) -> List[Dict]:
+        """Blend lexical/title signals back into retrieved results for cleaner top hits."""
+        reranked = []
+        for item in items:
+            metadata = item.get("metadata") or {}
+            lexical_score = cls._score_lexical_match(
+                query,
+                item.get("content", ""),
+                item.get("document_title", ""),
+                metadata.get("section_title", ""),
+            )
+            base_score = float(item.get("relevance_score", 0.0) or 0.0)
+            combined_score = min(1.0, (base_score * 0.68) + (lexical_score * 0.32))
+            reranked.append({**item, "relevance_score": combined_score})
+
+        reranked.sort(key=lambda entry: entry.get("relevance_score", 0), reverse=True)
+        return cls._dedupe_ranked_results(reranked, top_k)
+
+    @staticmethod
+    def _normalize_for_verification(text: str) -> str:
+        normalized = re.sub(r"\s+", " ", (text or "").strip().lower())
+        normalized = re.sub(r"[^a-z0-9\s%./:-]", "", normalized)
+        return normalized
+
+    @classmethod
+    def _claim_is_grounded(cls, claim: str, contexts: List[str]) -> bool:
+        normalized_claim = cls._normalize_for_verification(claim)
+        if len(normalized_claim) < 30:
+            return True
+        if any(normalized_claim in cls._normalize_for_verification(context) for context in contexts):
+            return True
+
+        claim_words = normalized_claim.split()
+        if len(claim_words) < 6:
+            return True
+
+        claim_ngrams = {" ".join(claim_words[index:index + 6]) for index in range(len(claim_words) - 5)}
+        for context in contexts:
+            normalized_context = cls._normalize_for_verification(context)
+            if any(ngram in normalized_context for ngram in claim_ngrams):
+                return True
+        return False
+
+    @classmethod
+    def _verify_answer(cls, answer: str, context_docs: List[Dict]) -> bool:
+        """Reject answers whose factual claims do not show up in the retrieved context."""
+        contexts = [doc.get("content", "") for doc in context_docs]
+        candidate_claims = [
+            line.strip("- ").strip()
+            for line in re.split(r"\n+|(?<=[.!?])\s+", answer or "")
+            if line.strip()
+        ]
+        checked_claims = 0
+        for claim in candidate_claims:
+            lowered = claim.lower()
+            if len(claim) < 24:
+                continue
+            if any(token in lowered for token in ("i can help", "please rephrase", "if you want", "let me know")):
+                continue
+            checked_claims += 1
+            if not cls._claim_is_grounded(claim, contexts):
+                return False
+        return checked_claims > 0
 
     @staticmethod
     def _ocr_score_adjustment(metadata: Optional[Dict]) -> float:
@@ -727,7 +864,12 @@ class RAGEngine:
         for row in response.data or []:
             metadata = row.get("metadata") or {}
             title = metadata.get("document_title", "Unknown")
-            score = self._score_lexical_match(query, row.get("chunk_text", ""), title)
+            score = self._score_lexical_match(
+                query,
+                row.get("chunk_text", ""),
+                title,
+                metadata.get("section_title", ""),
+            )
             score += self._ocr_score_adjustment(metadata)
             if score <= 0:
                 continue
@@ -748,7 +890,12 @@ class RAGEngine:
             for row in response.data or []:
                 metadata = row.get("metadata") or {}
                 title = metadata.get("document_title", "Unknown")
-                score = self._score_lexical_match(query, row.get("chunk_text", ""), title)
+                score = self._score_lexical_match(
+                    query,
+                    row.get("chunk_text", ""),
+                    title,
+                    metadata.get("section_title", ""),
+                )
                 score += self._ocr_score_adjustment(metadata)
                 if score <= 0:
                     continue
@@ -778,7 +925,12 @@ class RAGEngine:
         for doc, meta in zip(documents, metadatas):
             metadata = meta or {}
             title = metadata.get("document_title", "Unknown")
-            score = self._score_lexical_match(query, doc or "", title)
+            score = self._score_lexical_match(
+                query,
+                doc or "",
+                title,
+                metadata.get("section_title", ""),
+            )
             score += self._ocr_score_adjustment(metadata)
             if score <= 0:
                 continue
@@ -1259,17 +1411,23 @@ Summarize the most reliable answer supported by the snippets above."""
 
         return len(ids)
 
-    def search(self, query: str, top_k: int = 5) -> List[Dict]:
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        conversation_history: Optional[List[Dict]] = None,
+    ) -> List[Dict]:
         """Search for relevant document chunks."""
+        effective_query = self._rewrite_query_with_history(query, conversation_history=conversation_history)
         lexical_results: List[Dict] = []
         if self.use_supabase_vectors:
             try:
-                lexical_results = self._search_supabase_lexical(query, top_k)
+                lexical_results = self._search_supabase_lexical(effective_query, top_k)
             except Exception as exc:
                 logger.warning("Supabase lexical search failed: %s", exc)
         else:
             try:
-                lexical_results = self._search_chroma_lexical(query, top_k)
+                lexical_results = self._search_chroma_lexical(effective_query, top_k)
             except Exception as exc:
                 logger.warning("Chroma lexical search failed: %s", exc)
 
@@ -1280,7 +1438,7 @@ Summarize the most reliable answer supported by the snippets above."""
                 return lexical_results
             return []
 
-        raw_query_embedding = self._generate_embedding(query)
+        raw_query_embedding = self._generate_embedding(effective_query)
         query_embedding = self._align_embedding_dimension(
             raw_query_embedding,
             target_dimension=(
@@ -1297,8 +1455,16 @@ Summarize the most reliable answer supported by the snippets above."""
                     self.last_vector_backend_used = "supabase"
                     if lexical_results and max(result.get("relevance_score", 0) for result in results) < 0.45:
                         self.last_vector_backend_used = "supabase_lexical"
-                        return self._merge_ranked_results(lexical_results, results, top_k)
-                    return self._merge_ranked_results(results, lexical_results, top_k)
+                        return self._rerank_results(
+                            effective_query,
+                            self._merge_ranked_results(lexical_results, results, top_k),
+                            top_k,
+                        )
+                    return self._rerank_results(
+                        effective_query,
+                        self._merge_ranked_results(results, lexical_results, top_k),
+                        top_k,
+                    )
             except Exception as exc:
                 logger.warning("Supabase vector search failed, falling back to Chroma: %s", exc)
 
@@ -1355,12 +1521,20 @@ Summarize the most reliable answer supported by the snippets above."""
         if retrieved:
             if lexical_results and max(doc.get("relevance_score", 0) for doc in retrieved) < 0.45:
                 self.last_vector_backend_used = "chroma_lexical"
-                return self._merge_ranked_results(lexical_results, retrieved, top_k)
-            return self._merge_ranked_results(retrieved, lexical_results, top_k)
+                return self._rerank_results(
+                    effective_query,
+                    self._merge_ranked_results(lexical_results, retrieved, top_k),
+                    top_k,
+                )
+            return self._rerank_results(
+                effective_query,
+                self._merge_ranked_results(retrieved, lexical_results, top_k),
+                top_k,
+            )
 
         if lexical_results:
             self.last_vector_backend_used = "chroma_lexical" if not self.use_supabase_vectors else "supabase_lexical"
-            return lexical_results
+            return self._rerank_results(effective_query, lexical_results, top_k)
 
         return []
 
@@ -1522,7 +1696,11 @@ Summarize the most reliable answer supported by the snippets above."""
 
         messages = self._build_messages(query, context_docs, conversation_history=conversation_history)
         try:
-            return self._chat_with_fallback(messages, temperature=0.15)
+            response = self._chat_with_fallback(messages, temperature=0.15)
+            if not self._looks_like_greeting(query) and not self._verify_answer(response, context_docs):
+                logger.warning("Generated answer failed grounding verification for query: %s", query)
+                return self._compose_grounded_fallback(query, context_docs, conversation_history=conversation_history)
+            return response
         except Exception as exc:
             logger.warning("LLM response generation failed, using grounded fallback answer: %s", exc)
             return self._compose_grounded_fallback(query, context_docs, conversation_history=conversation_history)
@@ -1582,7 +1760,7 @@ Summarize the most reliable answer supported by the snippets above."""
         conversation_history: Optional[List[Dict]] = None,
     ) -> Dict:
         """Complete RAG chat: retrieve context and generate a non-streaming response."""
-        retrieved_docs = self.search(query, top_k=top_k)
+        retrieved_docs = self.search(query, top_k=top_k, conversation_history=conversation_history)
         relevant_docs = self._filter_relevant_docs(retrieved_docs)
         response = self.generate_response(query, relevant_docs, conversation_history=conversation_history)
         return {

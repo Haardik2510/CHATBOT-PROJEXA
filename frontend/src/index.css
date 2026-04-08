@@ -103,7 +103,7 @@
       radial-gradient(circle at 78% 28%, rgba(182, 23, 30, 0.14), transparent 18%),
       linear-gradient(160deg, rgba(11, 25, 60, 0.98), rgba(13, 40, 96, 0.88));
     background-size: 200% 200%, 220% 220%, 240% 240%, auto, auto, auto;
-    animation: scholar-laminar-flow 22s linear infinite alternate;
+    animation: scholar-laminar-flow 44s linear infinite alternate;
   }
 
   .btn-primary {
@@ -126,7 +126,7 @@
       radial-gradient(circle at 76% 72%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03) 10%, transparent 28%),
       rgba(15, 33, 78, 0.92);
     background-size: 200% 200%, 220% 220%, auto;
-    animation: scholar-laminar-flow-soft 18s linear infinite alternate;
+    animation: scholar-laminar-flow-soft 36s linear infinite alternate;
     transition: transform 240ms ease, box-shadow 240ms ease, border-color 240ms ease;
   }
 
@@ -197,7 +197,7 @@
       radial-gradient(circle at 82% 68%, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 10%, transparent 28%),
       linear-gradient(180deg, rgba(11, 25, 60, 0.94), rgba(16, 39, 91, 0.88));
     background-size: 190% 190%, 220% 220%, auto;
-    animation: scholar-laminar-flow-soft 20s linear infinite alternate;
+    animation: scholar-laminar-flow-soft 40s linear infinite alternate;
     transition: transform 240ms ease, box-shadow 240ms ease, border-color 240ms ease;
   }
 
@@ -330,25 +330,25 @@
 
 @keyframes scholar-laminar-flow {
   0% {
-    background-position: 0% 12%, 100% 14%, 18% 100%, 20% 20%, 78% 28%, 50% 50%;
+    background-position: 4% 16%, 96% 18%, 16% 92%, 20% 20%, 78% 28%, 50% 50%;
   }
   50% {
-    background-position: 36% 22%, 72% 34%, 44% 78%, 22% 18%, 76% 30%, 50% 50%;
+    background-position: 26% 22%, 74% 30%, 34% 74%, 21% 19%, 77% 29%, 50% 50%;
   }
   100% {
-    background-position: 68% 30%, 34% 44%, 72% 56%, 24% 22%, 74% 26%, 50% 50%;
+    background-position: 48% 28%, 52% 38%, 56% 58%, 23% 21%, 75% 27%, 50% 50%;
   }
 }
 
 @keyframes scholar-laminar-flow-soft {
   0% {
-    background-position: 0% 16%, 100% 82%, 50% 50%;
+    background-position: 8% 20%, 92% 76%, 50% 50%;
   }
   50% {
-    background-position: 42% 28%, 62% 58%, 50% 50%;
+    background-position: 28% 26%, 68% 60%, 50% 50%;
   }
   100% {
-    background-position: 78% 38%, 20% 34%, 50% 50%;
+    background-position: 46% 34%, 54% 42%, 50% 50%;
   }
 }
 

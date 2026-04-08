@@ -1,0 +1,63 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ringBlue" x1="72" y1="54" x2="442" y2="206" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0E69C5"/>
+      <stop offset="1" stop-color="#0A57A4"/>
+    </linearGradient>
+    <linearGradient id="shieldBlue" x1="150" y1="122" x2="362" y2="434" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8FD5FF"/>
+      <stop offset="0.55" stop-color="#2F99E8"/>
+      <stop offset="1" stop-color="#0E5FAF"/>
+    </linearGradient>
+    <linearGradient id="torchGold" x1="244" y1="120" x2="286" y2="214" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD94C"/>
+      <stop offset="1" stop-color="#F3A400"/>
+    </linearGradient>
+    <linearGradient id="ribbonWhite" x1="128" y1="386" x2="384" y2="454" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFDF8"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <filter id="softGlow" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+    <path id="topArc" d="M92 182C104 109 172 56 256 56C340 56 408 109 420 182"/>
+    <path id="ribbonArc" d="M150 428C190 405 322 405 362 428"/>
+  </defs>
+
+  <g filter="url(#softGlow)" opacity="0.18">
+    <circle cx="256" cy="210" r="154" fill="#6CB7FF"/>
+  </g>
+
+  <path d="M90 182C103 100 173 38 256 38C339 38 409 100 422 182H380C369 122 319 78 256 78C193 78 143 122 132 182H90Z" fill="url(#ringBlue)"/>
+  <path d="M88 182H132V278H98L88 182Z" fill="#0A63BB"/>
+  <path d="M380 182H424L414 278H380V182Z" fill="#0A63BB"/>
+
+  <path d="M144 174L172 140H340L368 174L350 204V404L256 462L162 404V204L144 174Z" fill="url(#shieldBlue)" stroke="#AECDE4" stroke-width="6"/>
+  <path d="M188 208C214 186 298 186 324 208C350 230 356 300 332 350C312 392 280 420 256 432C232 420 200 392 180 350C156 300 162 230 188 208Z" fill="rgba(255,255,255,0.22)" stroke="#DDF5FF" stroke-width="3"/>
+  <ellipse cx="256" cy="280" rx="82" ry="92" fill="none" stroke="#1A97E8" stroke-width="3"/>
+  <path d="M176 280H336M256 188V372M198 224C224 242 288 242 314 224M198 336C224 318 288 318 314 336" stroke="#0B7ED2" stroke-width="3" stroke-linecap="round"/>
+  <path d="M204 238C214 264 214 296 204 324M308 238C298 264 298 296 308 324" stroke="#FFFFFF" stroke-opacity="0.86" stroke-width="6" stroke-linecap="round"/>
+
+  <path d="M236 154C224 136 224 118 240 102C240 122 250 132 258 142C268 154 270 176 260 194C286 174 290 150 286 122C306 136 314 156 306 182C301 198 289 212 274 222C278 202 272 188 262 176C252 164 246 160 236 154Z" fill="url(#torchGold)"/>
+  <path d="M248 220H264L274 298H238L248 220Z" fill="#F6F7FA" stroke="#C7D3E7" stroke-width="3"/>
+  <path d="M228 198H284L272 228H240L228 198Z" fill="#FFFFFF" stroke="#D6E0F0" stroke-width="3"/>
+  <path d="M220 306L256 286L292 306L282 326H230L220 306Z" fill="#C7C7C7" stroke="#565656" stroke-width="3"/>
+  <path d="M230 326H282L270 336H242L230 326Z" fill="#7B7B7B"/>
+  <circle cx="256" cy="306" r="5" fill="#7B7B7B"/>
+
+  <path d="M114 280C114 280 96 314 90 346C106 334 118 322 126 304L114 280Z" fill="#0A63BB"/>
+  <path d="M398 280C398 280 416 314 422 346C406 334 394 322 386 304L398 280Z" fill="#0A63BB"/>
+  <path d="M126 302C104 328 106 374 134 404L156 392C138 364 136 330 144 310L126 302Z" fill="#E91523"/>
+  <path d="M386 302C408 328 406 374 378 404L356 392C374 364 376 330 368 310L386 302Z" fill="#E91523"/>
+  <path d="M146 396C136 388 120 390 114 404C132 414 142 420 162 430L170 418C162 412 154 404 146 396Z" fill="#FFF6F3" stroke="#E91523" stroke-width="4"/>
+  <path d="M366 396C376 388 392 390 398 404C380 414 370 420 350 430L342 418C350 412 358 404 366 396Z" fill="#FFF6F3" stroke="#E91523" stroke-width="4"/>
+
+  <path d="M138 406C180 394 332 394 374 406L356 454C316 468 196 468 156 454L138 406Z" fill="url(#ribbonWhite)" stroke="#E91523" stroke-width="5"/>
+
+  <text fill="white" font-family="Arial, sans-serif" font-size="29" font-weight="700" letter-spacing="1.6">
+    <textPath href="#topArc" startOffset="50%" text-anchor="middle">K.R. MANGALAM UNIVERSITY</textPath>
+  </text>
+  <text fill="#2E2E2E" font-family="Georgia, serif" font-size="24" font-weight="700" letter-spacing="1.2">
+    <textPath href="#ribbonArc" startOffset="50%" text-anchor="middle">DESTINATION SUCCESS</textPath>
+  </text>
+</svg>

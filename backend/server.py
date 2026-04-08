@@ -5,7 +5,7 @@ import textwrap
 import re
 import gc
 import shutil
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, BackgroundTasks, Request, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, BackgroundTasks, Request, Response, Query
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
@@ -185,6 +185,35 @@ async def get_current_user_from_token(credentials: HTTPAuthorizationCredentials 
     }
 
 
+async def _resolve_authenticated_user_from_token(raw_token: str) -> Optional[dict]:
+    """Resolve a user from Supabase, Clerk, or legacy JWT tokens."""
+    if not raw_token:
+        return None
+
+    supabase_auth_user = await fetch_supabase_user(raw_token)
+    if supabase_auth_user:
+        user = await sync_supabase_user(supabase_auth_user)
+        if user:
+            return _format_current_user(user)
+
+    clerk_payload = verify_clerk_session_token(raw_token)
+    if clerk_payload:
+        user = await sync_clerk_user(clerk_payload)
+        if user:
+            return _format_current_user(user)
+
+    payload = decode_token(raw_token)
+    if payload is None:
+        return None
+
+    return {
+        "id": payload.get("sub"),
+        "email": payload.get("email"),
+        "name": payload.get("name"),
+        "role": payload.get("role", "student"),
+    }
+
+
 def _format_current_user(user: dict) -> dict:
     return {
         "id": user["id"],
@@ -361,19 +390,7 @@ async def get_current_user(
 ) -> dict:
     """Get the current authenticated user from Clerk or legacy JWT token."""
     if credentials:
-        supabase_auth_user = await fetch_supabase_user(credentials.credentials)
-        if supabase_auth_user:
-            user = await sync_supabase_user(supabase_auth_user)
-            if user:
-                return _format_current_user(user)
-
-        clerk_payload = verify_clerk_session_token(credentials.credentials)
-        if clerk_payload:
-            user = await sync_clerk_user(clerk_payload)
-            if user:
-                return _format_current_user(user)
-
-        user = await get_current_user_from_token(credentials)
+        user = await _resolve_authenticated_user_from_token(credentials.credentials)
         if user:
             return user
     
@@ -856,7 +873,7 @@ async def _get_recent_conversation_history(user_id: str, session_id: str) -> Lis
     session = await store.get_chat_session(session_id, user_id)
     if not session:
         return []
-    return (session.get("messages") or [])[-6:]
+    return (session.get("messages") or [])[-10:]
 
 
 async def _persist_chat_turn(
@@ -1844,7 +1861,10 @@ async def chat_stream(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
         )
 
-    retrieved_docs = rag_engine.search(chat_request.message)
+    retrieved_docs = rag_engine.search(
+        chat_request.message,
+        conversation_history=conversation_history,
+    )
     source_payload = rag_engine.format_sources(retrieved_docs)
 
     if not _has_good_sources(source_payload):
@@ -2218,10 +2238,18 @@ async def upload_document(
 async def process_document_stream(
     job_id: str,
     request: Request,
+    token: Optional[str] = Query(default=None),
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
     """Synchronously process a document on Render and stream progress over SSE."""
-    current_user = await get_current_user(request, credentials)
+    if credentials:
+        current_user = await get_current_user(request, credentials)
+    elif token:
+        current_user = await _resolve_authenticated_user_from_token(token)
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+    else:
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
     if current_user["role"] not in ["faculty", "admin"]:
         raise HTTPException(status_code=403, detail="Only faculty and admin can process documents")

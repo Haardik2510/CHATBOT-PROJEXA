@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import axios from "axios";
@@ -71,7 +71,7 @@ const statusIcons = {
 };
 
 export default function DocumentsView() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, token } = useAuth();
   const [documents, setDocuments] = useState([]);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -84,6 +84,8 @@ export default function DocumentsView() {
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewData, setPreviewData] = useState(null);
+  const [processingJobs, setProcessingJobs] = useState({});
+  const processingStreamsRef = useRef({});
 
   const [fileUpload, setFileUpload] = useState({
     file: null,
@@ -124,6 +126,11 @@ export default function DocumentsView() {
   useEffect(() => {
     fetchDocuments();
   }, [fetchDocuments]);
+
+  useEffect(() => () => {
+    Object.values(processingStreamsRef.current).forEach((stream) => stream?.close?.());
+    processingStreamsRef.current = {};
+  }, []);
 
   useEffect(() => {
     const hasProcessing = documents.some(
@@ -166,6 +173,127 @@ export default function DocumentsView() {
     }
   };
 
+  const apiRoot = useMemo(() => API.replace(/\/api$/, ""), []);
+
+  const closeProcessingStream = useCallback((jobId) => {
+    const stream = processingStreamsRef.current[jobId];
+    if (stream) {
+      stream.close();
+      delete processingStreamsRef.current[jobId];
+    }
+  }, []);
+
+  const updateProcessingJob = useCallback((jobId, patch) => {
+    setProcessingJobs((prev) => ({
+      ...prev,
+      [jobId]: {
+        ...(prev[jobId] || {}),
+        ...patch,
+      },
+    }));
+  }, []);
+
+  const removeProcessingJob = useCallback((jobId, delayMs = 2500) => {
+    window.setTimeout(() => {
+      setProcessingJobs((prev) => {
+        if (!prev[jobId]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[jobId];
+        return next;
+      });
+    }, delayMs);
+  }, []);
+
+  const startProcessingStream = useCallback((uploadPayload, fallbackTitle = "Document") => {
+    const jobId = uploadPayload?.job_id || uploadPayload?.document_id;
+    if (!jobId) {
+      return;
+    }
+
+    closeProcessingStream(jobId);
+
+    const relativeProcessUrl = uploadPayload?.process_url || `/api/process/${jobId}`;
+    const endpoint = relativeProcessUrl.startsWith("http")
+      ? relativeProcessUrl
+      : `${apiRoot}${relativeProcessUrl}`;
+    const url = new URL(endpoint, window.location.origin);
+    if (token) {
+      url.searchParams.set("token", token);
+    }
+
+    updateProcessingJob(jobId, {
+      title: fallbackTitle,
+      stage: "uploaded",
+      progress: 0,
+      detail: "Upload complete. Starting indexing...",
+    });
+
+    const eventSource = new EventSource(url.toString());
+    processingStreamsRef.current[jobId] = eventSource;
+
+    eventSource.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        const nextStage = payload.stage || "processing";
+        const progress = Number(payload.progress ?? 0);
+        const detailParts = [];
+        if (payload.page) {
+          detailParts.push(`Page ${payload.page}`);
+        }
+        if (payload.batch) {
+          detailParts.push(`Batch ${payload.batch}`);
+        }
+        if (payload.chunk_count) {
+          detailParts.push(`${payload.chunk_count} chunks`);
+        }
+
+        updateProcessingJob(jobId, {
+          title: fallbackTitle,
+          stage: nextStage,
+          progress,
+          detail: detailParts.join(" · "),
+          collectionName: payload.collection_name,
+        });
+
+        if (nextStage === "ready") {
+          closeProcessingStream(jobId);
+          fetchDocuments({ silent: true });
+          toast.success(`${fallbackTitle} indexed successfully`);
+          removeProcessingJob(jobId);
+        }
+
+        if (nextStage === "error") {
+          closeProcessingStream(jobId);
+          fetchDocuments({ silent: true });
+          toast.error(payload.error || `Processing failed for ${fallbackTitle}`);
+          updateProcessingJob(jobId, {
+            title: fallbackTitle,
+            stage: "error",
+            progress: 100,
+            detail: payload.error || "Processing failed",
+          });
+        }
+      } catch (error) {
+        console.error("SSE parse error:", error);
+      }
+    };
+
+    eventSource.onerror = () => {
+      closeProcessingStream(jobId);
+      fetchDocuments({ silent: true });
+      updateProcessingJob(jobId, {
+        title: fallbackTitle,
+        stage: "error",
+        progress: 100,
+        detail: "Connection lost while processing",
+      });
+      toast.error(`Lost the live processing connection for ${fallbackTitle}`);
+      removeProcessingJob(jobId, 5000);
+    };
+  }, [apiRoot, closeProcessingStream, fetchDocuments, removeProcessingJob, token, updateProcessingJob]);
+
   const uploadFile = async () => {
     if (!fileUpload.file || !fileUpload.title) {
       toast.error("Please select a file and provide a title");
@@ -181,12 +309,13 @@ export default function DocumentsView() {
     }
 
     try {
-      await axios.post(`${API}/documents/upload`, formData, {
+      const response = await axios.post(`${API}/documents/upload`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      toast.success("Document uploaded and queued for indexing");
+      toast.success("Document uploaded. Live indexing has started.");
       setFileUpload({ file: null, title: "", description: "" });
       setUploadDialogOpen(false);
+      startProcessingStream(response.data, fileUpload.title);
       fetchDocuments();
     } catch (error) {
       console.error("Upload error:", error);
@@ -349,6 +478,7 @@ export default function DocumentsView() {
   const allSelected = documents.length > 0 && selectedDocumentIds.length === documents.length;
   const someSelected = selectedDocumentIds.length > 0 && !allSelected;
   const columnCount = isAdmin ? 8 : 7;
+  const activeProcessingJobs = Object.entries(processingJobs);
 
   return (
     <div className="scholar-page p-4 md:p-6 space-y-6">
@@ -584,6 +714,43 @@ export default function DocumentsView() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {activeProcessingJobs.length > 0 ? (
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="grid gap-3"
+        >
+          {activeProcessingJobs.map(([jobId, job]) => (
+            <div
+              key={jobId}
+              className="rounded-2xl border border-[#d7dff2] bg-white/85 p-4 shadow-[0_16px_28px_rgba(11,25,60,0.06)]"
+            >
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="section-eyebrow">Live Processing</p>
+                  <p className="mt-1 text-sm font-semibold text-[#0b193c]">{job.title || "Document"}</p>
+                  <p className="mt-1 text-xs text-[#7181a6] capitalize">
+                    {String(job.stage || "processing").replace(/_/g, " ")}
+                    {job.detail ? ` · ${job.detail}` : ""}
+                  </p>
+                </div>
+                <span className="rounded-full border border-[#d7dff2] bg-[#eef3ff] px-3 py-1 text-xs font-semibold text-[#24428a]">
+                  {Math.max(0, Math.min(100, Number(job.progress || 0)))}%
+                </span>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#edf1fb]">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    job.stage === "error" ? "bg-[#b6171e]" : "bg-[linear-gradient(90deg,#0b193c,#6294ff,#7ee7ff)]"
+                  }`}
+                  style={{ width: `${Math.max(6, Math.min(100, Number(job.progress || 0)))}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </motion.div>
+      ) : null}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

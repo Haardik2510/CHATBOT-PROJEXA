@@ -1,18 +1,24 @@
+import { useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import AuthCallback from "./pages/AuthCallback";
 import DashboardLayout from "./components/DashboardLayout";
+import KRMULogo from "./components/KRMULogo";
 import ChatView from "./pages/ChatView";
 import DocumentsView from "./pages/DocumentsView";
 import AnalyticsView from "./pages/AnalyticsView";
 import UsersView from "./pages/UsersView";
+import { API } from "./lib/api";
 import "./App.css";
 
 const LoadingScreen = () => (
   <div className="min-h-screen scholar-hero flex items-center justify-center">
     <div className="text-center">
+      <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-[22px] border border-white/15 bg-white/10 p-1.5 backdrop-blur-xl">
+        <KRMULogo className="h-full w-full object-contain drop-shadow-[0_12px_20px_rgba(0,0,0,0.18)]" size={72} />
+      </div>
       <div className="mx-auto mb-4 scholar-loader on-dark" />
       <p className="font-heading text-white">Entering Scholar Pulse...</p>
     </div>
@@ -40,6 +46,23 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
 function AppRouter() {
   const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (!user) {
+      return undefined;
+    }
+
+    const heartbeat = () => {
+      fetch(`${API}/ping`, {
+        method: "GET",
+        cache: "no-store",
+      }).catch(() => undefined);
+    };
+
+    heartbeat();
+    const interval = window.setInterval(heartbeat, 10 * 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, [user]);
 
   return (
     <Routes>
