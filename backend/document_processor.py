@@ -4,6 +4,8 @@ import re
 import logging
 import shutil
 import hashlib
+import json
+import zipfile
 from typing import List, Dict, Optional, Tuple
 from io import BytesIO
 import httpx
@@ -721,6 +723,170 @@ class DocumentProcessor:
         except Exception as e:
             logger.error(f"Error processing CSV: {e}")
             return {"success": False, "error": str(e), "chunks": []}
+
+    @classmethod
+    def _conversation_record_to_text(cls, record, index: int = 0) -> str:
+        """Normalize common chatbot/conversation JSON shapes into readable text."""
+        lines = []
+
+        def add_line(role: str, value) -> None:
+            text_value = cls.clean_text(str(value or ""))
+            if text_value:
+                lines.append(f"{role}: {text_value}")
+
+        if isinstance(record, dict):
+            title = record.get("title") or record.get("topic") or record.get("category") or record.get("intent")
+            if title:
+                lines.append(f"Conversation {index + 1} topic: {cls.clean_text(str(title))}")
+
+            messages = (
+                record.get("messages")
+                or record.get("conversation")
+                or record.get("conversations")
+                or record.get("dialog")
+                or record.get("dialogue")
+                or record.get("turns")
+            )
+            if isinstance(messages, list):
+                for turn in messages:
+                    if isinstance(turn, dict):
+                        role = (
+                            turn.get("role")
+                            or turn.get("from")
+                            or turn.get("speaker")
+                            or turn.get("sender")
+                            or "message"
+                        )
+                        value = (
+                            turn.get("content")
+                            or turn.get("text")
+                            or turn.get("value")
+                            or turn.get("message")
+                            or turn.get("utterance")
+                        )
+                        add_line(str(role).title(), value)
+                    else:
+                        add_line("Message", turn)
+            else:
+                # Instruction/chat datasets usually use one of these pairings.
+                pair_fields = [
+                    ("Instruction", record.get("instruction")),
+                    ("Input", record.get("input")),
+                    ("User", record.get("prompt") or record.get("question") or record.get("user")),
+                    ("Assistant", record.get("response") or record.get("answer") or record.get("assistant") or record.get("output")),
+                ]
+                for role, value in pair_fields:
+                    add_line(role, value)
+
+            if len(lines) <= 1:
+                # Last-resort flattening keeps metadata searchable without exposing JSON punctuation.
+                for key, value in record.items():
+                    if isinstance(value, (dict, list)):
+                        continue
+                    add_line(str(key).replace("_", " ").title(), value)
+
+        elif isinstance(record, list):
+            for item in record:
+                lines.append(cls._conversation_record_to_text(item, index=index))
+        else:
+            add_line("Text", record)
+
+        return cls.clean_text("\n".join(line for line in lines if line))
+
+    @classmethod
+    def _json_payload_to_text(cls, payload) -> str:
+        """Extract conversation-oriented text from arbitrary JSON payloads."""
+        records = payload
+        if isinstance(payload, dict):
+            for key in ("data", "conversations", "messages", "records", "items", "examples"):
+                if isinstance(payload.get(key), list):
+                    records = payload[key]
+                    break
+
+        if isinstance(records, list):
+            documents = []
+            for index, record in enumerate(records):
+                text = cls._conversation_record_to_text(record, index=index)
+                if len(text) >= 40:
+                    documents.append(text)
+            return cls.clean_text("\n\n---\n\n".join(documents))
+
+        return cls._conversation_record_to_text(records)
+
+    @classmethod
+    def process_json(cls, file_content: bytes) -> Dict:
+        """Index JSON/JSONL datasets such as multi-turn chatbot conversations."""
+        try:
+            text = file_content.decode("utf-8", errors="ignore").strip()
+            if not text:
+                return {"success": False, "error": "JSON file is empty", "chunks": []}
+
+            try:
+                payload = json.loads(text)
+                full_text = cls._json_payload_to_text(payload)
+            except json.JSONDecodeError:
+                # JSONL fallback.
+                rows = []
+                for index, line in enumerate(text.splitlines()):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rows.append(cls._conversation_record_to_text(json.loads(line), index=index))
+                    except json.JSONDecodeError:
+                        continue
+                full_text = cls.clean_text("\n\n---\n\n".join(row for row in rows if row))
+
+            chunk_size, overlap = cls._chunk_settings(
+                file_size_bytes=len(file_content),
+                text_length=len(full_text),
+            )
+            chunks = cls.chunk_text(full_text, chunk_size=chunk_size, overlap=overlap)
+            return {
+                "success": True,
+                "text": full_text,
+                "chunks": chunks,
+                "record_type": "conversation_json",
+                "chunk_size": chunk_size,
+            }
+        except Exception as e:
+            logger.error("Error processing JSON dataset: %s", e)
+            return {"success": False, "error": str(e), "chunks": []}
+
+    @classmethod
+    def process_zip_json(cls, file_content: bytes) -> Dict:
+        """Find JSON/JSONL files inside a ZIP export and index them together."""
+        try:
+            texts = []
+            with zipfile.ZipFile(BytesIO(file_content)) as archive:
+                names = [
+                    name for name in archive.namelist()
+                    if name.lower().endswith((".json", ".jsonl")) and not name.endswith("/")
+                ]
+                if not names:
+                    return {"success": False, "error": "ZIP did not contain any JSON or JSONL files", "chunks": []}
+
+                for name in names[:12]:
+                    result = cls.process_json(archive.read(name))
+                    if result.get("success") and result.get("text"):
+                        texts.append(f"Dataset file: {name}\n{result['text']}")
+
+            full_text = cls.clean_text("\n\n---\n\n".join(texts))
+            chunk_size, overlap = cls._chunk_settings(
+                file_size_bytes=len(file_content),
+                text_length=len(full_text),
+            )
+            chunks = cls.chunk_text(full_text, chunk_size=chunk_size, overlap=overlap)
+            return {
+                "success": True,
+                "text": full_text,
+                "chunks": chunks,
+                "record_type": "conversation_zip_json",
+                "chunk_size": chunk_size,
+            }
+        except Exception as e:
+            logger.error("Error processing ZIP JSON dataset: %s", e)
+            return {"success": False, "error": str(e), "chunks": []}
     
     @classmethod
     def process_pptx(cls, file_content: bytes) -> Dict:
@@ -765,6 +931,17 @@ class DocumentProcessor:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(url, follow_redirects=True)
                 response.raise_for_status()
+                content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+                normalized_url = str(response.url).lower()
+
+                if (
+                    content_type in {"application/json", "text/json", "application/x-ndjson"}
+                    or normalized_url.endswith((".json", ".jsonl"))
+                ):
+                    return cls.process_json(response.content)
+
+                if content_type in {"application/zip", "application/x-zip-compressed"} or normalized_url.endswith(".zip"):
+                    return cls.process_zip_json(response.content)
                 
                 soup = BeautifulSoup(response.text, 'lxml')
                 title = soup.find('title')
@@ -812,6 +989,8 @@ class DocumentProcessor:
             "docx": cls.process_docx,
             "txt": cls.process_txt,
             "csv": cls.process_csv,
+            "json": cls.process_json,
+            "zip": cls.process_zip_json,
             "pptx": cls.process_pptx,
         }
         

@@ -46,7 +46,7 @@ class TokenResponse(BaseModel):
 class DocumentBase(BaseModel):
     title: str
     description: Optional[str] = None
-    doc_type: Literal["pdf", "docx", "txt", "csv", "pptx", "url"] = "pdf"
+    doc_type: Literal["pdf", "docx", "txt", "csv", "pptx", "json", "zip", "url"] = "pdf"
 
 
 class Document(DocumentBase):

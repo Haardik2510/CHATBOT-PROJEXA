@@ -53,6 +53,8 @@ const fileTypeIcons = {
   txt: FileText,
   csv: FileSpreadsheet,
   pptx: Presentation,
+  json: FileText,
+  zip: File,
   url: Globe,
 };
 
@@ -599,7 +601,7 @@ export default function DocumentsView() {
                       id="file-input"
                       type="file"
                       className="hidden"
-                      accept=".pdf,.docx,.doc,.txt,.csv,.pptx,.ppt"
+                      accept=".pdf,.docx,.doc,.txt,.csv,.json,.jsonl,.zip,.pptx,.ppt"
                       onChange={handleFileSelect}
                     />
                     <Upload className="w-8 h-8 text-[#6b7280] mx-auto mb-2" />
@@ -608,7 +610,7 @@ export default function DocumentsView() {
                     ) : (
                       <>
                         <p className="text-[#9ca3af]">Drop file here or click to browse</p>
-                        <p className="text-xs text-[#6b7280] mt-1">Supports PDF, DOCX, TXT, CSV, PPTX</p>
+                        <p className="text-xs text-[#6b7280] mt-1">Supports PDF, DOCX, TXT, CSV, JSON, ZIP, PPTX</p>
                       </>
                     )}
                   </div>
