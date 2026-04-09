@@ -724,6 +724,46 @@ class DocumentProcessor:
             logger.error(f"Error processing CSV: {e}")
             return {"success": False, "error": str(e), "chunks": []}
 
+    @staticmethod
+    def _json_get_case_insensitive(record: Dict, *keys):
+        """Read common dataset keys even when Kaggle exports use User/AI or camelCase."""
+        if not isinstance(record, dict):
+            return None
+
+        exact = next((record.get(key) for key in keys if key in record and record.get(key) is not None), None)
+        if exact is not None:
+            return exact
+
+        lowered = {str(key).lower(): value for key, value in record.items()}
+        return next((lowered.get(str(key).lower()) for key in keys if lowered.get(str(key).lower()) is not None), None)
+
+    @classmethod
+    def _flatten_json_value_to_lines(cls, value, label: str = "Text", lines=None, max_lines: int = 260):
+        """Last-resort recursive extractor for readable JSON datasets with unknown schemas."""
+        if lines is None:
+            lines = []
+        if len(lines) >= max_lines:
+            return lines
+
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if len(lines) >= max_lines:
+                    break
+                cls._flatten_json_value_to_lines(child, str(key).replace("_", " ").title(), lines, max_lines)
+            return lines
+
+        if isinstance(value, list):
+            for child in value:
+                if len(lines) >= max_lines:
+                    break
+                cls._flatten_json_value_to_lines(child, label, lines, max_lines)
+            return lines
+
+        text_value = cls.clean_text(str(value or ""))
+        if text_value and len(text_value) >= 2:
+            lines.append(f"{label}: {text_value}")
+        return lines
+
     @classmethod
     def _conversation_record_to_text(cls, record, index: int = 0) -> str:
         """Normalize common chatbot/conversation JSON shapes into readable text."""
@@ -735,55 +775,79 @@ class DocumentProcessor:
                 lines.append(f"{role}: {text_value}")
 
         if isinstance(record, dict):
-            title = record.get("title") or record.get("topic") or record.get("category") or record.get("intent")
+            title = cls._json_get_case_insensitive(record, "title", "topic", "category", "intent", "tag", "name")
             if title:
                 lines.append(f"Conversation {index + 1} topic: {cls.clean_text(str(title))}")
+            topic_line_count = len(lines)
 
-            messages = (
-                record.get("messages")
-                or record.get("conversation")
-                or record.get("conversations")
-                or record.get("dialog")
-                or record.get("dialogue")
-                or record.get("turns")
+            messages = cls._json_get_case_insensitive(
+                record,
+                "messages",
+                "conversation",
+                "conversations",
+                "dialog",
+                "dialogue",
+                "turns",
+                "chat",
+                "transcript",
             )
             if isinstance(messages, list):
                 for turn in messages:
                     if isinstance(turn, dict):
                         role = (
-                            turn.get("role")
-                            or turn.get("from")
-                            or turn.get("speaker")
-                            or turn.get("sender")
+                            cls._json_get_case_insensitive(turn, "role", "from", "speaker", "sender", "author")
                             or "message"
                         )
-                        value = (
-                            turn.get("content")
-                            or turn.get("text")
-                            or turn.get("value")
-                            or turn.get("message")
-                            or turn.get("utterance")
+                        value = cls._json_get_case_insensitive(
+                            turn,
+                            "content",
+                            "text",
+                            "value",
+                            "message",
+                            "utterance",
+                            "human",
+                            "user",
+                            "assistant",
+                            "bot",
+                            "gpt",
                         )
-                        add_line(str(role).title(), value)
+                        if value:
+                            add_line(str(role).title(), value)
+                        else:
+                            # Turns such as {"User": "...", "AI": "..."} carry role names as keys.
+                            for key, child in turn.items():
+                                if isinstance(child, (dict, list)):
+                                    continue
+                                add_line(str(key).replace("_", " ").title(), child)
                     else:
                         add_line("Message", turn)
             else:
                 # Instruction/chat datasets usually use one of these pairings.
                 pair_fields = [
-                    ("Instruction", record.get("instruction")),
-                    ("Input", record.get("input")),
-                    ("User", record.get("prompt") or record.get("question") or record.get("user")),
-                    ("Assistant", record.get("response") or record.get("answer") or record.get("assistant") or record.get("output")),
+                    ("Instruction", cls._json_get_case_insensitive(record, "instruction", "system")),
+                    ("Input", cls._json_get_case_insensitive(record, "input", "context")),
+                    ("User", cls._json_get_case_insensitive(record, "prompt", "question", "query", "user", "human")),
+                    (
+                        "Assistant",
+                        cls._json_get_case_insensitive(
+                            record,
+                            "response",
+                            "answer",
+                            "assistant",
+                            "output",
+                            "completion",
+                            "bot",
+                            "gpt",
+                            "ai",
+                        ),
+                    ),
                 ]
                 for role, value in pair_fields:
                     add_line(role, value)
 
-            if len(lines) <= 1:
-                # Last-resort flattening keeps metadata searchable without exposing JSON punctuation.
-                for key, value in record.items():
-                    if isinstance(value, (dict, list)):
-                        continue
-                    add_line(str(key).replace("_", " ").title(), value)
+            if len(lines) <= topic_line_count:
+                # Last-resort recursive flattening keeps unknown JSON schemas searchable.
+                lines.extend(cls._flatten_json_value_to_lines(record))
 
         elif isinstance(record, list):
             for item in record:
@@ -798,7 +862,20 @@ class DocumentProcessor:
         """Extract conversation-oriented text from arbitrary JSON payloads."""
         records = payload
         if isinstance(payload, dict):
-            for key in ("data", "conversations", "messages", "records", "items", "examples"):
+            for key in (
+                "data",
+                "intents",
+                "conversations",
+                "messages",
+                "records",
+                "items",
+                "examples",
+                "rows",
+                "train",
+                "validation",
+                "paragraphs",
+                "qas",
+            ):
                 if isinstance(payload.get(key), list):
                     records = payload[key]
                     break
