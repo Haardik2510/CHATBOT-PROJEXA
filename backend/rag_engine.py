@@ -698,12 +698,90 @@ class RAGEngine:
         )
 
     @classmethod
+    def _conversation_topic_from_history(cls, conversation_history: Optional[List[Dict]] = None) -> str:
+        """Find the latest concrete user topic instead of anchoring to another vague follow-up."""
+        for turn in reversed(conversation_history or []):
+            if turn.get("role") != "user":
+                continue
+
+            content = " ".join((turn.get("content") or "").split())
+            if not content:
+                continue
+            if cls._looks_like_follow_up(content) or cls._looks_context_dependent(content):
+                continue
+            return content[:260]
+
+        return ""
+
+    @classmethod
+    def _looks_context_dependent(cls, query: str) -> bool:
+        """Detect follow-up aspects that are useless without the active conversation topic."""
+        lowered = (query or "").strip().lower()
+        if not lowered:
+            return False
+
+        if cls._looks_like_follow_up(lowered):
+            return True
+
+        concrete_topic_patterns = (
+            r"\bkrmu\b",
+            r"\bk\.?\s*r\.?\s*mangalam\b",
+            r"\bmangalam\s+university\b",
+            r"\bb\.?\s*tech\b",
+            r"\bm\.?\s*tech\b",
+            r"\bbba\b",
+            r"\bmba\b",
+            r"\bbca\b",
+            r"\bmca\b",
+            r"\bcse\b",
+            r"\bcomputer\s+science\b",
+            r"\bschool\s+of\b",
+            r"\bhostel(s)?\b",
+            r"\blibrar(y|ies)\b",
+            r"\bcampus\b",
+            r"\btransport\b",
+            r"\bevent(s)?\b",
+            r"\bhappening(s)?\b",
+            r"\bconvocation\b",
+            r"\bhackathon\b",
+        )
+        if any(re.search(pattern, lowered) for pattern in concrete_topic_patterns):
+            return False
+
+        context_aspect_patterns = (
+            r"\bfees?\b",
+            r"\bfee\s+structure\b",
+            r"\beligibilit(y|ies)\b",
+            r"\badmission\s+(process|steps|criteria|requirement)",
+            r"\bplacement(s)?\b",
+            r"\bscholarship(s)?\b",
+            r"\bsyllabus\b",
+            r"\bcurriculum\b",
+            r"\bsubjects?\b",
+            r"\bsemester(s)?\b",
+            r"\bduration\b",
+            r"\bcredits?\b",
+            r"\bassessments?\b",
+            r"\bprogramme?\s+outcomes?\b",
+            r"\bcareer(s)?\b",
+            r"\bscope\b",
+            r"\bfacult(y|ies)\b",
+            r"\bin\s+detail\b",
+            r"\bexplain\b",
+            r"\belaborate\b",
+            r"\bsummarize\b",
+            r"\bsummarise\b",
+            r"\bkey\s+highlights?\b",
+        )
+        query_terms = cls._extract_query_terms(lowered, max_terms=14)
+        return len(query_terms) <= 10 and any(re.search(pattern, lowered) for pattern in context_aspect_patterns)
+
+    @classmethod
     def _rewrite_query_with_history(cls, query: str, conversation_history: Optional[List[Dict]] = None) -> str:
-        """Rewrite short follow-up questions so retrieval keeps the active topic."""
-        if not cls._looks_like_follow_up(query) or not conversation_history:
+        """Rewrite follow-up questions so retrieval keeps the active conversation topic."""
+        if not conversation_history:
             return query
 
-        latest_user_topic = ""
         latest_assistant_context = ""
         for turn in reversed(conversation_history or []):
             content = " ".join((turn.get("content") or "").split())
@@ -711,15 +789,19 @@ class RAGEngine:
                 continue
             if turn.get("role") == "assistant" and not latest_assistant_context:
                 latest_assistant_context = content[:220]
-            if turn.get("role") == "user":
-                latest_user_topic = content
-                break
 
-        anchor = latest_user_topic or latest_assistant_context
+        active_topic = cls._conversation_topic_from_history(conversation_history)
+        anchor = active_topic or latest_assistant_context
         if not anchor:
             return query
 
-        return f"{anchor}\nFollow-up question: {query}"
+        if cls._looks_like_follow_up(query):
+            return f"{anchor}\nFollow-up question: {query}"
+
+        if cls._looks_context_dependent(query):
+            return f"Active conversation topic: {anchor}\nCurrent question about that topic: {query}"
+
+        return query
 
     @classmethod
     def _expand_query_for_retrieval(cls, query: str) -> str:

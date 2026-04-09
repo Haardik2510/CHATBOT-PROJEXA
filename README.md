@@ -421,6 +421,7 @@ It reports key status like:
 
 - KRMU-only curated dataset expanded for better facility-level answers
 - database retrieval improved with lexical fallback and better grounding logic
+- multi-turn retrieval rewrites follow-up questions with the active conversation topic
 - database answers formatted more cleanly and conservatively
 - chat answers can be switched between Auto, Groq, Gemini, and OpenAI from the chat toolbar
 - raw dataset tags/internal metadata are stripped from generated chat answers
