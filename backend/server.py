@@ -2993,6 +2993,36 @@ async def seed_knowledge_base(
     }
 
 
+@api_router.post("/admin/seed-official-urls")
+async def seed_official_urls(
+    background_tasks: BackgroundTasks,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Expand an existing archive with the reviewed official-KRMU URL manifest."""
+    current_user = await get_current_user(request, credentials)
+
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    from knowledge_seeder import KnowledgeBaseSeeder
+    seeder = KnowledgeBaseSeeder(store, rag_engine)
+
+    async def run_url_seeding():
+        try:
+            result = await seeder.seed_official_urls(skip_existing=True)
+            logger.info("Official KRMU URL seeding completed: %s", result)
+        except Exception as e:
+            logger.error("Official KRMU URL seeding error: %s", e)
+
+    background_tasks.add_task(run_url_seeding)
+
+    return {
+        "message": "Official KRMU page indexing started",
+        "status": "processing",
+    }
+
+
 @api_router.get("/admin/seed-status")
 async def get_seed_status(
     request: Request,

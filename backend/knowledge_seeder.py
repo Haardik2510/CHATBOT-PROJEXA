@@ -2,6 +2,7 @@
 import json
 import logging
 import asyncio
+import os
 from pathlib import Path
 from typing import List, Dict, Optional
 import httpx
@@ -11,6 +12,30 @@ from document_processor import DocumentProcessor
 logger = logging.getLogger(__name__)
 ROOT_DIR = Path(__file__).resolve().parent
 LOCAL_DATASET_PATH = ROOT_DIR / "datasets" / "krmu_official_knowledge.json"
+LOCAL_URL_MANIFEST_PATH = ROOT_DIR / "datasets" / "krmu_official_url_manifest.json"
+
+
+def _truthy_env(name: str, default: str = "true") -> bool:
+    return os.environ.get(name, default).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _float_env(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+SEED_LIVE_URLS = _truthy_env("KRMU_SEED_LIVE_URLS", "true")
+SEED_URL_LIMIT = max(0, _int_env("KRMU_SEED_URL_LIMIT", 40))
+SEED_URL_DELAY_SECONDS = max(0.0, _float_env("KRMU_SEED_URL_DELAY_SECONDS", 0.2))
 
 
 # K.R. Mangalam University SET official pages to seed
@@ -296,6 +321,75 @@ class KnowledgeBaseSeeder:
         logger.info("Loaded %s curated KRMU dataset documents", len(documents))
         return documents
 
+    def load_url_manifest(self) -> List[Dict]:
+        """Load the reviewed official-KRMU URL manifest."""
+        if not LOCAL_URL_MANIFEST_PATH.exists():
+            logger.info("Official KRMU URL manifest not found at %s", LOCAL_URL_MANIFEST_PATH)
+            return []
+
+        try:
+            payload = json.loads(LOCAL_URL_MANIFEST_PATH.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.error("Failed to load official KRMU URL manifest: %s", exc)
+            return []
+
+        records = payload.get("urls", payload) if isinstance(payload, dict) else payload
+        if not isinstance(records, list):
+            logger.error("Official KRMU URL manifest is malformed: expected a list or {'urls': []}")
+            return []
+
+        manifest_urls = []
+        for index, record in enumerate(records, start=1):
+            if not isinstance(record, dict):
+                continue
+            url = str(record.get("url") or "").strip()
+            if not url:
+                continue
+            manifest_urls.append(
+                {
+                    "url": url,
+                    "title": str(record.get("title") or f"KRMU Official Page {index}").strip(),
+                    "category": str(record.get("category") or "official_page").strip(),
+                    "priority": int(record.get("priority") or 999),
+                }
+            )
+
+        logger.info("Loaded %s official KRMU URL manifest entries", len(manifest_urls))
+        return sorted(manifest_urls, key=lambda item: (item.get("priority", 999), item["title"]))
+
+    @staticmethod
+    def _normalize_url_key(url: Optional[str]) -> str:
+        return str(url or "").strip().lower().rstrip("/")
+
+    def official_seed_urls(self) -> List[Dict]:
+        """Merge legacy core URLs and the reviewed manifest, preserving one entry per URL."""
+        deduped: Dict[str, Dict] = {}
+        for record in [*self.load_url_manifest(), *SEED_URLS]:
+            key = self._normalize_url_key(record.get("url"))
+            if not key or key in deduped:
+                continue
+            deduped[key] = {
+                "url": record["url"],
+                "title": record.get("title") or record["url"],
+                "category": record.get("category") or "official_page",
+            }
+        return list(deduped.values())
+
+    async def _existing_seed_source_url_keys(self) -> set:
+        """Return already-indexed seed URLs so expanding the archive is idempotent."""
+        existing = set()
+        try:
+            for doc in await self.store.list_documents(limit=1000):
+                if not doc.get("is_seed"):
+                    continue
+                for value in (doc.get("source_url"), doc.get("filename")):
+                    key = self._normalize_url_key(value)
+                    if key.startswith("http"):
+                        existing.add(key)
+        except Exception as exc:
+            logger.warning("Could not inspect existing seed URLs before URL seeding: %s", exc)
+        return existing
+
     async def _create_seed_document(
         self,
         doc_id: str,
@@ -402,6 +496,62 @@ class KnowledgeBaseSeeder:
                 "success": False,
                 "error": str(e)
             }
+
+    async def seed_official_urls(
+        self,
+        *,
+        max_urls: int = SEED_URL_LIMIT,
+        skip_existing: bool = True,
+    ) -> Dict:
+        """Scrape the official KRMU URL manifest into the same searchable archive."""
+        results = {
+            "urls": [],
+            "attempted_count": 0,
+            "success_count": 0,
+            "error_count": 0,
+            "skipped_count": 0,
+            "total_chunks": 0,
+        }
+
+        if not SEED_LIVE_URLS:
+            results["disabled"] = True
+            results["message"] = "Live official-URL seeding is disabled by KRMU_SEED_LIVE_URLS=false."
+            return results
+
+        existing_urls = await self._existing_seed_source_url_keys() if skip_existing else set()
+        official_urls = self.official_seed_urls()
+        if max_urls:
+            official_urls = official_urls[:max_urls]
+
+        logger.info("Seeding up to %s official KRMU URLs...", len(official_urls))
+        for url_info in official_urls:
+            normalized_url = self._normalize_url_key(url_info.get("url"))
+            if skip_existing and normalized_url in existing_urls:
+                results["skipped_count"] += 1
+                continue
+
+            result = await self.seed_url(url_info)
+            results["urls"].append(result)
+            results["attempted_count"] += 1
+
+            if result.get("success"):
+                results["success_count"] += 1
+                results["total_chunks"] += result.get("chunks", 0)
+                existing_urls.add(normalized_url)
+            else:
+                results["error_count"] += 1
+
+            if SEED_URL_DELAY_SECONDS:
+                await asyncio.sleep(SEED_URL_DELAY_SECONDS)
+
+        logger.info(
+            "Official URL seeding complete: %s indexed, %s skipped, %s failed, %s chunks",
+            results["success_count"],
+            results["skipped_count"],
+            results["error_count"],
+            results["total_chunks"],
+        )
+        return results
     
     async def seed_text_document(
         self,
@@ -507,6 +657,7 @@ class KnowledgeBaseSeeder:
         results = {
             "urls": [],
             "documents": [],
+            "official_url_seed": None,
             "total_chunks": 0,
             "success_count": 0,
             "error_count": 0
@@ -539,18 +690,16 @@ class KnowledgeBaseSeeder:
                 results["error_count"],
                 results["total_chunks"]
             )
+
+        official_url_result = await self.seed_official_urls()
+        results["official_url_seed"] = official_url_result
+        results["urls"].extend(official_url_result.get("urls") or [])
+        results["success_count"] += official_url_result.get("success_count", 0)
+        results["error_count"] += official_url_result.get("error_count", 0)
+        results["total_chunks"] += official_url_result.get("total_chunks", 0)
+
+        if dataset_documents:
             return results
-        
-        # Seed URLs
-        logger.info(f"Seeding {len(SEED_URLS)} URLs...")
-        for url_info in SEED_URLS:
-            result = await self.seed_url(url_info)
-            results["urls"].append(result)
-            if result["success"]:
-                results["success_count"] += 1
-                results["total_chunks"] += result.get("chunks", 0)
-            else:
-                results["error_count"] += 1
         
         # Seed faculty data
         logger.info("Seeding faculty directory...")

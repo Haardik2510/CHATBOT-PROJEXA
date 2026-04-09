@@ -1,0 +1,150 @@
+{
+  "dataset_name": "krmu_official_url_manifest",
+  "description": "Reviewed official K.R. Mangalam University pages for optional live URL seeding. Keep this manifest limited to KRMU-owned domains.",
+  "urls": [
+    {
+      "title": "KRMU Homepage",
+      "url": "https://www.krmangalam.edu.in/",
+      "category": "overview",
+      "priority": 10
+    },
+    {
+      "title": "About K.R. Mangalam University",
+      "url": "https://www.krmangalam.edu.in/about-us/",
+      "category": "overview",
+      "priority": 11
+    },
+    {
+      "title": "KRMU Accreditations Recognition and Approvals",
+      "url": "https://www.krmangalam.edu.in/accreditations-recognition-and-approvals",
+      "category": "accreditation",
+      "priority": 12
+    },
+    {
+      "title": "KRMU Contact Us",
+      "url": "https://www.krmangalam.edu.in/contact-us",
+      "category": "contact",
+      "priority": 13
+    },
+    {
+      "title": "KRMU Programmes",
+      "url": "https://www.krmangalam.edu.in/programmes",
+      "category": "programmes",
+      "priority": 20
+    },
+    {
+      "title": "KRMU Fee Structure",
+      "url": "https://www.krmangalam.edu.in/admission/fee-structure",
+      "category": "fees",
+      "priority": 21
+    },
+    {
+      "title": "KRMU Scholarships",
+      "url": "https://www.krmangalam.edu.in/admission/scholarship",
+      "category": "scholarships",
+      "priority": 22
+    },
+    {
+      "title": "KRMU Entrance Examination KREE",
+      "url": "https://www.krmangalam.edu.in/kree",
+      "category": "admissions",
+      "priority": 23
+    },
+    {
+      "title": "KRMU Admissions Microsite",
+      "url": "https://admissions.krmangalam.edu.in/",
+      "category": "admissions",
+      "priority": 24
+    },
+    {
+      "title": "KRMU Placements",
+      "url": "https://www.krmangalam.edu.in/placements",
+      "category": "placements",
+      "priority": 30
+    },
+    {
+      "title": "KRMU Placement Overview",
+      "url": "https://www.krmangalam.edu.in/placement/overview",
+      "category": "placements",
+      "priority": 31
+    },
+    {
+      "title": "KRMU Placement Process",
+      "url": "https://www.krmangalam.edu.in/the-placements-process",
+      "category": "placements",
+      "priority": 32
+    },
+    {
+      "title": "KRMU Recruiters",
+      "url": "https://krmangalam.edu.in/placement/our-recruiter/",
+      "category": "placements",
+      "priority": 33
+    },
+    {
+      "title": "School of Engineering and Technology",
+      "url": "https://www.krmangalam.edu.in/school-of-engineering-and-technology",
+      "category": "school",
+      "priority": 40
+    },
+    {
+      "title": "SOET Faculty",
+      "url": "https://www.krmangalam.edu.in/soet-2/",
+      "category": "faculty",
+      "priority": 41
+    },
+    {
+      "title": "B.Tech Computer Science and Engineering",
+      "url": "https://www.krmangalam.edu.in/programs/b-tech-cse",
+      "category": "programme",
+      "priority": 42
+    },
+    {
+      "title": "KRMU Infrastructure",
+      "url": "https://www.krmangalam.edu.in/infrastructure",
+      "category": "facilities",
+      "priority": 50
+    },
+    {
+      "title": "KRMU Campus Facilities",
+      "url": "https://www.krmangalam.edu.in/krmu-campus-facilities",
+      "category": "facilities",
+      "priority": 51
+    },
+    {
+      "title": "KRMU Campus Tour",
+      "url": "https://www.krmangalam.edu.in/campus-tour",
+      "category": "facilities",
+      "priority": 52
+    },
+    {
+      "title": "KRMU Library",
+      "url": "https://www.krmangalam.edu.in/library",
+      "category": "library",
+      "priority": 53
+    },
+    {
+      "title": "KRMU Library OPAC",
+      "url": "https://opac.krmangalam.edu.in/",
+      "category": "library",
+      "priority": 54
+    },
+    {
+      "title": "KRMU Hostel",
+      "url": "https://www.krmangalam.edu.in/hostel",
+      "category": "hostel",
+      "priority": 55
+    },
+    {
+      "title": "KRMU News and Events",
+      "url": "https://www.krmangalam.edu.in/happenings/news-and-events",
+      "category": "events",
+      "priority": 60
+    },
+    {
+      "title": "KRMU Happenings",
+      "url": "https://www.krmangalam.edu.in/happenings/",
+      "category": "events",
+      "priority": 61
+    }
+  ]
+}

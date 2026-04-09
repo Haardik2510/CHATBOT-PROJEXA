@@ -24,6 +24,7 @@ The app supports local development, Docker-based local setup, and split deployme
 - chat-to-PDF export with view, edit, and download actions
 - PDF, DOCX, TXT, CSV, PPTX, and URL ingestion
 - curated KRMU dataset seeding
+- reviewed official-KRMU webpage manifest seeding
 - admin analytics, user management, and knowledge-base controls
 - chunk preview, retrieval inspection, and source-backed answers
 
@@ -36,6 +37,7 @@ The app supports local development, Docker-based local setup, and split deployme
 - bulk document delete is available for admins
 - the chat layout keeps the sidebar and shell fixed while only the message area scrolls
 - the seed dataset now includes more KRMU facility-specific records for hostels, library, campus facilities, research support, transport, placements, and student life
+- admins can append a reviewed batch of official KRMU webpages into the indexed archive
 - answer formatting is cleaner and production-style, with sources shown at the end of each reply
 - an optional large-PDF indexing pipeline is available for heavy documents without making the main Render deploy depend on the full ML stack
 
@@ -71,7 +73,8 @@ The app supports local development, Docker-based local setup, and split deployme
 |   |-- sql/
 |   |   `-- supabase_schema.sql
 |   `-- datasets/
-|       `-- krmu_official_knowledge.json
+|       |-- krmu_official_knowledge.json
+|       `-- krmu_official_url_manifest.json
 |-- frontend/
 |   |-- src/
 |   |-- public/
@@ -186,6 +189,10 @@ EMBEDDING_API_KEY=
 EMBEDDING_MODEL=
 
 ENABLE_WEB_FALLBACK=false
+
+KRMU_SEED_LIVE_URLS=true
+KRMU_SEED_URL_LIMIT=40
+KRMU_SEED_URL_DELAY_SECONDS=0.2
 ```
 
 Notes:
@@ -194,6 +201,7 @@ Notes:
 - `OPENAI_*` is optional and powers the OpenAI option in the chat model switcher
 - `GEMINI_*` is optional and powers Gemini chat plus official KRMU happenings/news enrichment
 - `EMBEDDING_*` is optional and only needed if you want remote embeddings
+- `KRMU_SEED_*` controls the reviewed official-KRMU webpage seeding pass
 - if `EMBEDDING_*` is not configured, the app falls back to Ollama embeddings and then hash-based safeguards when necessary
 - the advanced large-PDF hybrid pipeline is kept optional and is not required for the normal Render deployment
 
@@ -305,10 +313,12 @@ Relevant files:
 
 - [`backend/knowledge_seeder.py`](/c:/Users/HP/Desktop/CHATBOT-PROJEXA-walter/backend/knowledge_seeder.py)
 - [`backend/datasets/krmu_official_knowledge.json`](/c:/Users/HP/Desktop/CHATBOT-PROJEXA-walter/backend/datasets/krmu_official_knowledge.json)
+- [`backend/datasets/krmu_official_url_manifest.json`](/c:/Users/HP/Desktop/CHATBOT-PROJEXA-walter/backend/datasets/krmu_official_url_manifest.json)
 
 Admin endpoints:
 
 - `POST /api/admin/seed-knowledge-base`
+- `POST /api/admin/seed-official-urls`
 - `GET /api/admin/seed-status`
 - `DELETE /api/admin/clear-seeds`
 
@@ -318,6 +328,7 @@ Recommended flow:
 2. Seed the knowledge base.
 3. Confirm indexed documents from seed status and the documents page.
 4. Re-seed after major dataset updates.
+5. Click `Add Official KRMU Pages` in Knowledge Base Settings to append the reviewed live webpage manifest without deleting uploaded files.
 
 ## Main API Areas
 
@@ -354,6 +365,7 @@ Recommended flow:
 - `GET /api/admin/users`
 - `PATCH /api/admin/users/{user_id}/role`
 - `POST /api/admin/seed-knowledge-base`
+- `POST /api/admin/seed-official-urls`
 - `GET /api/admin/seed-status`
 - `DELETE /api/admin/clear-seeds`
 - `POST /api/admin/refresh-models`
@@ -416,6 +428,7 @@ It reports key status like:
 - official KRMU happenings/news scraping added for event summaries and images
 - optional Gemini enrichment added for event/news responses
 - chunk preview and retrieval inspection tools added for admins
+- reviewed official KRMU URL manifest plus admin indexing action added for broader archive coverage
 - answer presentation cleaned up so sources appear at the end of the reply
 - duplicate upload prevention added
 - bulk document deletion added

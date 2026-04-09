@@ -28,6 +28,7 @@ import {
   Loader2,
   BookOpen,
   GraduationCap,
+  Globe,
   Search,
 } from "lucide-react";
 
@@ -37,6 +38,7 @@ export default function KnowledgeBaseSettings() {
   const [status, setStatus] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isSeedingUrls, setIsSeedingUrls] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [evaluationQuery, setEvaluationQuery] = useState("");
@@ -72,6 +74,22 @@ export default function KnowledgeBaseSettings() {
       toast.error(error.response?.data?.detail || "Failed to seed knowledge base");
     } finally {
       setIsSeeding(false);
+    }
+  };
+
+  const seedOfficialUrls = async () => {
+    setIsSeedingUrls(true);
+    try {
+      await axios.post(`${API}/admin/seed-official-urls`);
+      toast.success("Official KRMU page indexing started. Keep this panel open and refresh status in a minute.");
+      const interval = setInterval(async () => {
+        await fetchStatus();
+      }, 5000);
+      setTimeout(() => clearInterval(interval), 90000);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to index official KRMU pages");
+    } finally {
+      setIsSeedingUrls(false);
     }
   };
 
@@ -295,7 +313,7 @@ export default function KnowledgeBaseSettings() {
             Faculty directory & policies
           </li>
         </ul>
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3 md:flex-row">
           <Button
             onClick={seedKnowledgeBase}
             disabled={isSeeding || (status?.seeded_documents || 0) > 0}
@@ -308,6 +326,20 @@ export default function KnowledgeBaseSettings() {
               <><CheckCircle className="w-4 h-4 mr-2" /> Already Seeded</>
             ) : (
               <><Sparkles className="w-4 h-4 mr-2" /> Seed Knowledge Base</>
+            )}
+          </Button>
+          <Button
+            type="button"
+            onClick={seedOfficialUrls}
+            disabled={isSeedingUrls}
+            variant="outline"
+            className="flex-1 bg-[#1e2330] border-[#2a3142] text-white hover:bg-[#2a3142]"
+            data-testid="seed-official-urls-btn"
+          >
+            {isSeedingUrls ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Indexing pages...</>
+            ) : (
+              <><Globe className="w-4 h-4 mr-2" />Add Official KRMU Pages</>
             )}
           </Button>
           {(status?.seeded_documents || 0) > 0 && (
