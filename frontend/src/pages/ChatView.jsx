@@ -542,40 +542,28 @@ export default function ChatView() {
 
   return (
     <div className="scholar-page flex h-full min-h-0 flex-col overflow-hidden">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 100, damping: 20 }}
-        className="flex shrink-0 flex-col gap-2 border-b border-[#e1e7f5] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,249,250,0.8))] px-4 py-3 md:px-6"
-      >
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className={messages.length > 0 ? "max-w-2xl" : "max-w-3xl"}>
-            <p className="section-eyebrow">AI Research Chat</p>
-            <h1 className={`${messages.length > 0 ? "mt-1 text-[30px] md:text-[34px]" : "page-title mt-2"} font-extrabold text-[#0b193c]`}>
-              Scholar Pulse Conversation Studio
-            </h1>
-            {messages.length === 0 ? (
+      <AnimatePresence initial={false}>
+        {messages.length === 0 ? (
+          <motion.div
+            key="empty-chat-header"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16, height: 0 }}
+            transition={{ type: "spring", stiffness: 100, damping: 20 }}
+            className="flex shrink-0 flex-col gap-2 border-b border-[#e1e7f5] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,249,250,0.8))] px-4 py-3 md:px-6"
+          >
+            <div className="max-w-3xl">
+              <p className="section-eyebrow">AI Research Chat</p>
+              <h1 className="page-title mt-2 font-extrabold text-[#0b193c]">
+                Scholar Pulse Conversation Studio
+              </h1>
               <p className="mt-2 max-w-2xl text-sm leading-7 text-[#5c6b8d] md:text-base">
                 Database-only mode is active. Every answer is grounded in your indexed academic archive and organized for quick reading.
               </p>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-3">
-            {messages.length > 0 ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearChat}
-                data-testid="clear-chat-btn"
-                className="btn-secondary h-11 whitespace-nowrap"
-              >
-                <RotateCcw className="mr-2 h-4 w-4" />
-                New Chat
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </motion.div>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <ScrollArea type="always" className="flex-1 min-h-0">
         <div className="mx-auto flex max-w-5xl px-4 py-6 md:px-6">
@@ -810,6 +798,20 @@ export default function ChatView() {
         className="shrink-0 border-t border-[#e1e7f5] bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,249,250,0.98))] px-4 py-4 md:px-6"
       >
         <div className="mx-auto max-w-5xl">
+          {messages.length > 0 ? (
+            <div className="mb-3 flex justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearChat}
+                data-testid="clear-chat-btn"
+                className="btn-secondary h-9 rounded-full px-4 text-xs"
+              >
+                <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                New Chat
+              </Button>
+            </div>
+          ) : null}
           <div className="flex items-end gap-3">
             <motion.button
               whileHover={{ scale: 1.04 }}
