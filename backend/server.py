@@ -114,6 +114,8 @@ DOCUMENT_INDEX_MAX_TIMEOUT_SECONDS = max(
 SUPABASE_SPLIT_THRESHOLD_BYTES = int(os.environ.get("SUPABASE_SPLIT_THRESHOLD_BYTES", str(45 * 1024 * 1024)))
 SUPABASE_MAX_PART_BYTES = int(os.environ.get("SUPABASE_MAX_PART_BYTES", str(40 * 1024 * 1024)))
 SSE_PAGE_BATCH_SIZE = max(1, int(os.environ.get("SSE_PAGE_BATCH_SIZE", "5")))
+CURATED_KRMU_DATASET_PATH = ROOT_DIR / "datasets" / "krmu_official_knowledge.json"
+_CURATED_KRMU_DOCS_CACHE: Optional[List[Dict[str, Any]]] = None
 
 
 def _parse_cors_origins(raw_value: str) -> List[str]:
@@ -447,6 +449,123 @@ def _build_source_citations(source_payload: list) -> List[SourceCitation]:
         )
         for source in source_payload
     ]
+
+
+def _load_curated_krmu_docs() -> List[Dict[str, Any]]:
+    """Load the small official KRMU seed dataset as a safety net for common campus questions."""
+    global _CURATED_KRMU_DOCS_CACHE
+    if _CURATED_KRMU_DOCS_CACHE is not None:
+        return _CURATED_KRMU_DOCS_CACHE
+
+    try:
+        payload = json.loads(CURATED_KRMU_DATASET_PATH.read_text(encoding="utf-8"))
+        _CURATED_KRMU_DOCS_CACHE = [
+            doc
+            for doc in payload.get("documents", [])
+            if isinstance(doc, dict) and str(doc.get("content") or "").strip()
+        ]
+    except Exception as exc:
+        logger.warning("Could not load curated KRMU dataset fallback: %s", exc)
+        _CURATED_KRMU_DOCS_CACHE = []
+
+    return _CURATED_KRMU_DOCS_CACHE
+
+
+def _search_curated_krmu_seed(message: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    """Search curated official KRMU seed records when the vector DB is missing/too sparse."""
+    expanded_query = rag_engine._expand_query_for_retrieval(message)
+    normalized_message = (message or "").lower()
+    category_triggers = {
+        "hostel": ("hostel", "hostels", "accommodation", "mess", "warden", "residence"),
+        "admissions": ("admission", "admissions", "apply", "application", "enrol", "enroll", "registration", "kree"),
+        "library": ("library", "lms", "books", "journal", "journals", "database", "e-library"),
+        "placements": ("placement", "placements", "career", "recruiter", "recruiters", "internship", "ctc", "package"),
+        "facilities": ("facility", "facilities", "campus", "lab", "labs", "classroom", "sports", "medical", "cafeteria"),
+        "transport": ("transport", "bus", "route", "shuttle", "commute", "metro"),
+        "fees": ("fee", "fees", "payment", "refund"),
+        "scholarship": ("scholarship", "scholarships", "financial aid"),
+        "programme": ("program", "programme", "course", "b.tech", "btech", "m.tech", "mtech", "bca", "mca", "mba", "bba"),
+    }
+    requested_categories = {
+        category
+        for category, triggers in category_triggers.items()
+        if any(trigger in normalized_message for trigger in triggers)
+    }
+    ranked_docs = []
+
+    for doc in _load_curated_krmu_docs():
+        content = str(doc.get("content") or "")
+        title = str(doc.get("title") or "Curated KRMU Knowledge")
+        category = str(doc.get("category") or "")
+        original_score = rag_engine._score_lexical_match(
+            message,
+            content,
+            title,
+            category,
+        )
+        expanded_score = rag_engine._score_lexical_match(
+            expanded_query,
+            content,
+            title,
+            category,
+        )
+        score = (original_score * 0.80) + (expanded_score * 0.20)
+
+        doc_search_text = f"{category} {title}".lower()
+        if any(category_name in doc_search_text for category_name in requested_categories):
+            score += 0.32
+
+        if requested_categories and not any(category_name in doc_search_text for category_name in requested_categories):
+            score -= 0.22
+
+        if score <= 0:
+            continue
+
+        document_id = f"curated:{doc.get('id') or title}"
+        ranked_docs.append(
+            {
+                "content": content,
+                "document_id": document_id,
+                "document_title": title,
+                "chunk_index": 0,
+                "relevance_score": max(0.30, min(score, 0.92)),
+                "metadata": {
+                    "document_id": document_id,
+                    "document_title": title,
+                    "section_title": str(doc.get("category") or "curated official KRMU knowledge"),
+                    "source_url": doc.get("source_url"),
+                    "curated_seed_fallback": True,
+                },
+            }
+        )
+
+    ranked_docs.sort(key=lambda entry: entry.get("relevance_score", 0), reverse=True)
+    return ranked_docs[:top_k]
+
+
+def _build_curated_krmu_chat_result(
+    message: str,
+    conversation_history: Optional[List[Dict]] = None,
+    chat_provider: str = "auto",
+) -> Optional[dict]:
+    """Generate a grounded response from the repo's verified official-KRMU seed dataset."""
+    curated_docs = _search_curated_krmu_seed(message)
+    if not curated_docs:
+        return None
+
+    response_text = rag_engine.generate_response(
+        message,
+        curated_docs,
+        conversation_history=conversation_history,
+        chat_provider=chat_provider,
+    )
+    return {
+        "response": response_text,
+        "sources": rag_engine.format_sources(curated_docs),
+        "images": [],
+        "artifacts": [],
+        "curated_seed_fallback": True,
+    }
 
 
 def _should_use_large_pdf_pipeline(file_type: str, file_size: int) -> bool:
@@ -1025,15 +1144,23 @@ async def _resolve_chat_result(
             if large_pdf_result and _has_good_sources(large_pdf_result.get("sources", [])):
                 rag_result = large_pdf_result
             else:
-                rag_result = {
-                    "response": (
-                        "I couldn't find a sufficiently grounded answer in the indexed knowledge base. "
-                        "Please rephrase the question or upload/seed more relevant documents."
-                    ),
-                    "sources": rag_result.get("sources", []),
-                    "images": rag_result.get("images", []),
-                    "artifacts": rag_result.get("artifacts", []),
-                }
+                curated_result = _build_curated_krmu_chat_result(
+                    message,
+                    conversation_history=conversation_history,
+                    chat_provider=chat_provider,
+                )
+                if curated_result and _has_good_sources(curated_result.get("sources", [])):
+                    rag_result = curated_result
+                else:
+                    rag_result = {
+                        "response": (
+                            "I couldn't find a sufficiently grounded answer in the indexed knowledge base. "
+                            "Please rephrase the question or upload/seed more relevant documents."
+                        ),
+                        "sources": rag_result.get("sources", []),
+                        "images": rag_result.get("images", []),
+                        "artifacts": rag_result.get("artifacts", []),
+                    }
     except Exception as exc:
         logger.exception("Chat pipeline failed for message %s: %s", message, exc)
         rag_result = {
