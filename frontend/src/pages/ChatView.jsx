@@ -7,6 +7,15 @@ import { Textarea } from "../components/ui/textarea";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
+import {
+  ChevronDown,
   Mic,
   MicOff,
   Send,
@@ -23,6 +32,9 @@ import {
   Pencil,
   ScanSearch,
   FileStack,
+  History,
+  Image as ImageIcon,
+  MessageSquareText,
 } from "lucide-react";
 
 import { API } from "../lib/api";
@@ -117,6 +129,8 @@ export default function ChatView() {
   const [editingArtifact, setEditingArtifact] = useState(null);
   const [editedPdfText, setEditedPdfText] = useState("");
   const [isRegeneratingPdf, setIsRegeneratingPdf] = useState(false);
+  const [chatSessions, setChatSessions] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const messagesEndRef = useRef(null);
   const recognitionRef = useRef(null);
   const synthRef = useRef(window.speechSynthesis);
@@ -218,6 +232,81 @@ export default function ChatView() {
     return "I couldn’t answer that just now. Please try again, or rephrase your question.";
   };
 
+  const getSessionPreview = (session) => {
+    const firstUserMessage = (session?.messages || []).find((message) => message.role === "user");
+    const preview = String(firstUserMessage?.content || "Untitled research chat").replace(/\s+/g, " ").trim();
+    return preview.length > 58 ? `${preview.slice(0, 58)}...` : preview;
+  };
+
+  const getSessionDateLabel = (session) => {
+    const value = session?.updated_at || session?.created_at;
+    if (!value) return "Saved chat";
+
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(new Date(value));
+    } catch {
+      return "Saved chat";
+    }
+  };
+
+  const fetchChatSessions = async ({ silent = false } = {}) => {
+    setIsLoadingHistory(true);
+    try {
+      const response = await axios.get(`${API}/chat/sessions`);
+      setChatSessions(response.data?.sessions || []);
+    } catch (error) {
+      console.error("Chat history error:", error);
+      if (!silent) {
+        toast.error(error?.response?.data?.detail || "Could not load chat history.");
+      }
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const loadChatSession = async (targetSessionId) => {
+    if (!targetSessionId || targetSessionId === sessionId) return;
+
+    setIsLoadingHistory(true);
+    try {
+      const response = await axios.get(`${API}/chat/sessions/${targetSessionId}`);
+      const session = response.data;
+      const restoredMessages = (session?.messages || []).map((message) => ({
+        role: message.role,
+        content: message.content || "",
+        timestamp: message.timestamp || message.created_at || new Date().toISOString(),
+        sources: [],
+        images: [],
+        artifacts: [],
+        answerMode: DATABASE_MODE,
+      }));
+
+      setMessages(restoredMessages);
+      setSessionId(session.id || targetSessionId);
+      setEditDialogOpen(false);
+      setEditingMessageIndex(null);
+      setEditingArtifact(null);
+      setEditedPdfText("");
+      synthRef.current.cancel();
+      setIsSpeaking(false);
+      toast.success("Chat history loaded.");
+    } catch (error) {
+      console.error("Load chat session error:", error);
+      toast.error(error?.response?.data?.detail || "Could not open that chat.");
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchChatSessions({ silent: true });
+  }, []);
+
   const copyResponse = async (text, index) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -299,6 +388,8 @@ export default function ChatView() {
       if (voiceInput && aiResponse) {
         speakText(aiResponse);
       }
+
+      fetchChatSessions({ silent: true });
     } catch (error) {
       console.error("Chat error:", error);
       const fallbackText = buildFriendlyChatError(error);
@@ -350,6 +441,107 @@ export default function ChatView() {
     return null;
   };
 
+  const requestPdfArtifact = async ({ content, title, generatedFromRole = "assistant", images = [] }) => {
+    const response = await axios.post(`${API}/chat/export-pdf`, {
+      content,
+      title,
+      generated_from_role: generatedFromRole,
+      images,
+    });
+    const artifact = response.data?.artifact;
+    if (!artifact) {
+      throw new Error("Missing PDF artifact");
+    }
+    return artifact;
+  };
+
+  const appendPdfArtifactMessage = (artifact, content) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content,
+        sources: [],
+        images: [],
+        artifacts: [artifact],
+        timestamp: new Date().toISOString(),
+        answerMode: DATABASE_MODE,
+      },
+    ]);
+  };
+
+  const buildChatTranscript = () =>
+    messages
+      .filter((message) => String(message?.content || "").trim())
+      .map((message) => {
+        const speaker = message.role === "user" ? "You" : "Scholar Pulse";
+        return `${speaker}:\n${String(message.content || "").trim()}`;
+      })
+      .join("\n\n---\n\n");
+
+  const collectChatImages = () =>
+    messages.flatMap((message) => (Array.isArray(message?.images) ? message.images : []));
+
+  const exportPreviousMessagePdf = async () => {
+    const sourceMessage = resolvePdfExportSource("previous assistant answer pdf");
+    if (!sourceMessage) {
+      toast.error("Ask a question first, then export the latest answer.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const titlePrefix = sourceMessage.role === "assistant" ? "Scholar Pulse Reply" : "Scholar Pulse Note";
+      const artifact = await requestPdfArtifact({
+        content: sourceMessage.content,
+        title: `${titlePrefix} PDF`,
+        generatedFromRole: sourceMessage.role || "assistant",
+        images: sourceMessage.images || [],
+      });
+      appendPdfArtifactMessage(
+        artifact,
+        "I prepared the previous message as a PDF. You can view, edit, or download it below."
+      );
+      toast.success("Previous message PDF is ready.");
+    } catch (error) {
+      console.error("Previous PDF export error:", error);
+      toast.error(error?.response?.data?.detail || "Could not export the previous message.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const exportFullChatPdf = async ({ includeImages = false } = {}) => {
+    const transcript = buildChatTranscript();
+    if (!transcript) {
+      toast.error("Start a chat first, then export it.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const images = includeImages ? collectChatImages() : [];
+      const artifact = await requestPdfArtifact({
+        content: transcript,
+        title: includeImages ? "Scholar Pulse Full Chat With Images" : "Scholar Pulse Full Chat",
+        generatedFromRole: "assistant",
+        images,
+      });
+      appendPdfArtifactMessage(
+        artifact,
+        includeImages
+          ? "I bundled the full chat into a PDF and included retrieved web/document images when available."
+          : "I bundled the full chat text into a PDF. You can view, edit, or download it below."
+      );
+      toast.success("Chat PDF is ready.");
+    } catch (error) {
+      console.error("Full chat PDF export error:", error);
+      toast.error(error?.response?.data?.detail || "Could not export the chat.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handlePdfExportRequest = async (message) => {
     const sourceMessage = resolvePdfExportSource(message);
     const userMessage = {
@@ -384,30 +576,16 @@ export default function ChatView() {
     setIsLoading(true);
     try {
       const titlePrefix = sourceMessage.role === "assistant" ? "Scholar Pulse Reply" : "Scholar Pulse Note";
-      const response = await axios.post(`${API}/chat/export-pdf`, {
+      const artifact = await requestPdfArtifact({
         content: sourceMessage.content,
         title: `${titlePrefix} PDF`,
-        generated_from_role: sourceMessage.role || "assistant",
+        generatedFromRole: sourceMessage.role || "assistant",
         images: sourceMessage.images || [],
       });
-      const artifact = response.data?.artifact;
-      if (!artifact) {
-        throw new Error("Missing PDF artifact");
-      }
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content:
-            "I converted the latest message into a PDF with the retrieved images included when available. Use the controls below to view it, edit the text, or download the file.",
-          sources: [],
-          images: [],
-          artifacts: [artifact],
-          timestamp: new Date().toISOString(),
-          answerMode: DATABASE_MODE,
-        },
-      ]);
+      appendPdfArtifactMessage(
+        artifact,
+        "I converted the latest message into a PDF with the retrieved images included when available. Use the controls below to view it, edit the text, or download the file."
+      );
     } catch (error) {
       console.error("PDF export error:", error);
       const fallbackText = error?.response?.data?.detail || "I couldn't create the PDF right now.";
@@ -798,20 +976,110 @@ export default function ChatView() {
         className="shrink-0 border-t border-[#e1e7f5] bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,249,250,0.98))] px-4 py-4 md:px-6"
       >
         <div className="mx-auto max-w-5xl">
-          {messages.length > 0 ? (
-            <div className="mb-3 flex justify-end">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearChat}
-                data-testid="clear-chat-btn"
-                className="btn-secondary h-9 rounded-full px-4 text-xs"
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <DropdownMenu onOpenChange={(open) => open && fetchChatSessions({ silent: true })}>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="btn-secondary h-9 rounded-full px-4 text-xs">
+                  <History className="mr-2 h-3.5 w-3.5" />
+                  History
+                  <ChevronDown className="ml-2 h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="w-80 border-[#d7dff2] bg-white/96 p-2 text-[#0b193c] shadow-[0_24px_40px_rgba(11,25,60,0.14)] backdrop-blur-xl"
               >
-                <RotateCcw className="mr-2 h-3.5 w-3.5" />
-                New Chat
-              </Button>
+                <DropdownMenuLabel className="section-eyebrow px-3 py-2 text-[#5c6b8d]">
+                  Saved research chats
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator className="bg-[#e1e7f5]" />
+                {isLoadingHistory ? (
+                  <DropdownMenuItem disabled className="rounded-xl px-3 py-3 text-sm text-[#5c6b8d]">
+                    Loading history...
+                  </DropdownMenuItem>
+                ) : null}
+                {!isLoadingHistory && chatSessions.length === 0 ? (
+                  <DropdownMenuItem disabled className="rounded-xl px-3 py-3 text-sm text-[#5c6b8d]">
+                    No saved chats yet
+                  </DropdownMenuItem>
+                ) : null}
+                {!isLoadingHistory &&
+                  chatSessions.slice(0, 10).map((session) => (
+                    <DropdownMenuItem
+                      key={session.id}
+                      onSelect={() => loadChatSession(session.id)}
+                      className="flex cursor-pointer flex-col items-start rounded-xl px-3 py-3 focus:bg-[#eef3ff] focus:text-[#0b193c]"
+                    >
+                      <span className="line-clamp-2 text-sm font-semibold leading-5">
+                        {getSessionPreview(session)}
+                      </span>
+                      <span className="mt-1 text-xs text-[#7181a6]">{getSessionDateLabel(session)}</span>
+                    </DropdownMenuItem>
+                  ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={messages.length === 0 || isLoading}
+                    className="btn-secondary h-9 rounded-full px-4 text-xs"
+                  >
+                    <Download className="mr-2 h-3.5 w-3.5" />
+                    PDF
+                    <ChevronDown className="ml-2 h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-72 border-[#d7dff2] bg-white/96 p-2 text-[#0b193c] shadow-[0_24px_40px_rgba(11,25,60,0.14)] backdrop-blur-xl"
+                >
+                  <DropdownMenuLabel className="section-eyebrow px-3 py-2 text-[#5c6b8d]">
+                    Download as PDF
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator className="bg-[#e1e7f5]" />
+                  <DropdownMenuItem
+                    onSelect={exportPreviousMessagePdf}
+                    className="cursor-pointer rounded-xl px-3 py-3 focus:bg-[#eef3ff] focus:text-[#0b193c]"
+                  >
+                    <MessageSquareText className="h-4 w-4 text-[#6294ff]" />
+                    Previous answer only
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => exportFullChatPdf({ includeImages: false })}
+                    className="cursor-pointer rounded-xl px-3 py-3 focus:bg-[#eef3ff] focus:text-[#0b193c]"
+                  >
+                    <FileText className="h-4 w-4 text-[#6294ff]" />
+                    All chats
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => exportFullChatPdf({ includeImages: true })}
+                    className="cursor-pointer rounded-xl px-3 py-3 focus:bg-[#eef3ff] focus:text-[#0b193c]"
+                  >
+                    <ImageIcon className="h-4 w-4 text-[#6294ff]" />
+                    All chats with images
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {messages.length > 0 ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearChat}
+                  data-testid="clear-chat-btn"
+                  className="btn-secondary h-9 rounded-full px-4 text-xs"
+                >
+                  <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                  New Chat
+                </Button>
+              ) : null}
             </div>
-          ) : null}
+          </div>
+
           <div className="flex items-end gap-3">
             <motion.button
               whileHover={{ scale: 1.04 }}
