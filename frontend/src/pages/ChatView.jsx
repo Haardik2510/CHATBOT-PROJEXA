@@ -40,6 +40,11 @@ import {
 import { API } from "../lib/api";
 
 const DATABASE_MODE = "database";
+const CHAT_PROVIDER_LABELS = {
+  auto: "Auto LLM",
+  groq: "Groq",
+  gemini: "Gemini",
+};
 
 const shortcuts = [
   { label: "Smart Citation", icon: FileText },
@@ -131,6 +136,7 @@ export default function ChatView() {
   const [isRegeneratingPdf, setIsRegeneratingPdf] = useState(false);
   const [chatSessions, setChatSessions] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [chatProvider, setChatProvider] = useState(() => localStorage.getItem("scholarPulseChatProvider") || "auto");
   const messagesEndRef = useRef(null);
   const recognitionRef = useRef(null);
   const synthRef = useRef(window.speechSynthesis);
@@ -307,6 +313,13 @@ export default function ChatView() {
     fetchChatSessions({ silent: true });
   }, []);
 
+  const selectChatProvider = (provider) => {
+    const normalizedProvider = ["auto", "groq", "gemini"].includes(provider) ? provider : "auto";
+    setChatProvider(normalizedProvider);
+    localStorage.setItem("scholarPulseChatProvider", normalizedProvider);
+    toast.success(`${CHAT_PROVIDER_LABELS[normalizedProvider]} selected for chat answers.`);
+  };
+
   const copyResponse = async (text, index) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -365,6 +378,7 @@ export default function ChatView() {
         session_id: sessionId,
         voice_input: voiceInput,
         answer_mode: DATABASE_MODE,
+        chat_provider: chatProvider,
       });
 
       const { response: aiResponse, sources, images, artifacts, session_id } = response.data;
@@ -1020,6 +1034,46 @@ export default function ChatView() {
             </DropdownMenu>
 
             <div className="flex flex-wrap justify-end gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="btn-secondary h-9 rounded-full px-4 text-xs">
+                    <Sparkles className="mr-2 h-3.5 w-3.5" />
+                    {CHAT_PROVIDER_LABELS[chatProvider] || "Auto LLM"}
+                    <ChevronDown className="ml-2 h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-72 border-[#d7dff2] bg-white/96 p-2 text-[#0b193c] shadow-[0_24px_40px_rgba(11,25,60,0.14)] backdrop-blur-xl"
+                >
+                  <DropdownMenuLabel className="section-eyebrow px-3 py-2 text-[#5c6b8d]">
+                    Answer model
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator className="bg-[#e1e7f5]" />
+                  <DropdownMenuItem
+                    onSelect={() => selectChatProvider("auto")}
+                    className="flex cursor-pointer flex-col items-start rounded-xl px-3 py-3 focus:bg-[#eef3ff] focus:text-[#0b193c]"
+                  >
+                    <span className="text-sm font-semibold">Auto fallback</span>
+                    <span className="mt-1 text-xs text-[#7181a6]">Use Groq first, then available fallbacks.</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => selectChatProvider("groq")}
+                    className="flex cursor-pointer flex-col items-start rounded-xl px-3 py-3 focus:bg-[#eef3ff] focus:text-[#0b193c]"
+                  >
+                    <span className="text-sm font-semibold">Groq</span>
+                    <span className="mt-1 text-xs text-[#7181a6]">Fast default chat model for grounded database answers.</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => selectChatProvider("gemini")}
+                    className="flex cursor-pointer flex-col items-start rounded-xl px-3 py-3 focus:bg-[#eef3ff] focus:text-[#0b193c]"
+                  >
+                    <span className="text-sm font-semibold">Gemini</span>
+                    <span className="mt-1 text-xs text-[#7181a6]">Use your Gemini API key for the final answer.</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button

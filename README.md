@@ -49,6 +49,7 @@ The app supports local development, Docker-based local setup, and split deployme
 - File Storage: Supabase Storage
 - Chat Providers:
   - remote OpenAI-compatible provider via `LLM_BASE_URL`
+  - optional Gemini chat switch via `GEMINI_API_KEY` and `GEMINI_CHAT_MODEL`
   - Ollama fallback
 - Multimodal/Event Enrichment:
   - optional Gemini via `GEMINI_API_KEY`
@@ -170,8 +171,9 @@ LLM_MODEL=llama-3.1-70b-versatile
 LLM_REQUEST_TIMEOUT=60
 LLM_MAX_TOKENS=384
 
-# Optional Gemini enrichment for official KRMU events/news
+# Optional Gemini chat switch + official KRMU events/news enrichment
 GEMINI_API_KEY=
+GEMINI_CHAT_MODEL=gemini-1.5-flash
 GEMINI_MODEL=gemini-2.5-flash
 
 EMBEDDING_BASE_URL=
@@ -401,6 +403,9 @@ It reports key status like:
 - KRMU-only curated dataset expanded for better facility-level answers
 - database retrieval improved with lexical fallback and better grounding logic
 - database answers formatted more cleanly and conservatively
+- chat answers can be switched between Auto, Groq, and Gemini from the chat toolbar
+- raw dataset tags/internal metadata are stripped from generated chat answers
+- PDF, DOCX, and PPTX table rows are preserved as labeled facts during indexing
 - official KRMU happenings/news scraping added for event summaries and images
 - optional Gemini enrichment added for event/news responses
 - chunk preview and retrieval inspection tools added for admins

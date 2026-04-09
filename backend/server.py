@@ -913,6 +913,12 @@ def _normalize_answer_mode(answer_mode: Optional[str]) -> str:
     return "internet" if (answer_mode or "").strip().lower() == "internet" else "database"
 
 
+def _normalize_chat_provider(chat_provider: Optional[str]) -> str:
+    """Normalize the requested LLM provider."""
+    provider = (chat_provider or "auto").strip().lower()
+    return provider if provider in {"auto", "groq", "gemini"} else "auto"
+
+
 async def _resolve_internet_chat_result(
     message: str,
     conversation_history: Optional[List[Dict]] = None,
@@ -969,6 +975,7 @@ async def _resolve_chat_result(
     message: str,
     answer_mode: str = "database",
     conversation_history: Optional[List[Dict]] = None,
+    chat_provider: str = "auto",
 ) -> tuple[dict, bool]:
     """Resolve a non-streaming chat result for the selected source mode."""
     normalized_mode = _normalize_answer_mode(answer_mode)
@@ -1007,7 +1014,11 @@ async def _resolve_chat_result(
         return event_result
 
     try:
-        rag_result = rag_engine.chat(message, conversation_history=conversation_history)
+        rag_result = rag_engine.chat(
+            message,
+            conversation_history=conversation_history,
+            chat_provider=chat_provider,
+        )
 
         if not _has_good_sources(rag_result.get("sources", [])):
             large_pdf_result = await _resolve_large_pdf_chat_result(message)
@@ -1785,11 +1796,13 @@ async def chat(
     session_id = await _ensure_chat_session(current_user["id"], chat_request.session_id)
     conversation_history = await _get_recent_conversation_history(current_user["id"], session_id)
     answer_mode = _normalize_answer_mode(chat_request.answer_mode)
+    chat_provider = _normalize_chat_provider(chat_request.chat_provider)
 
     rag_result, is_web_fallback = await _resolve_chat_result(
         chat_request.message,
         answer_mode=answer_mode,
         conversation_history=conversation_history,
+        chat_provider=chat_provider,
     )
     
     # Format sources
@@ -1858,12 +1871,14 @@ async def chat_stream(
     session_id = await _ensure_chat_session(current_user["id"], chat_request.session_id)
     conversation_history = await _get_recent_conversation_history(current_user["id"], session_id)
     answer_mode = _normalize_answer_mode(chat_request.answer_mode)
+    chat_provider = _normalize_chat_provider(chat_request.chat_provider)
 
     if answer_mode == "internet":
         rag_result, is_web_fallback = await _resolve_chat_result(
             chat_request.message,
             answer_mode=answer_mode,
             conversation_history=conversation_history,
+            chat_provider=chat_provider,
         )
         sources = _build_source_citations(rag_result.get("sources", []))
         images = _build_chat_images(rag_result.get("images", []))
@@ -1911,6 +1926,7 @@ async def chat_stream(
             chat_request.message,
             answer_mode=answer_mode,
             conversation_history=conversation_history,
+            chat_provider=chat_provider,
         )
         sources = _build_source_citations(rag_result.get("sources", []))
         images = _build_chat_images(rag_result.get("images", []))
@@ -1969,6 +1985,7 @@ async def chat_stream(
                 chat_request.message,
                 retrieved_docs,
                 conversation_history=conversation_history,
+                chat_provider=chat_provider,
             ):
                 if not chunk:
                     continue

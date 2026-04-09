@@ -117,6 +117,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     voice_input: bool = False
     answer_mode: Literal["database", "internet"] = "database"
+    chat_provider: Literal["auto", "groq", "gemini"] = "auto"
 
 
 class SourceCitation(BaseModel):

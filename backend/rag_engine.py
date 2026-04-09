@@ -47,6 +47,12 @@ LLM_API_KEY = os.environ.get("LLM_API_KEY", "").strip()
 LLM_MODEL = os.environ.get("LLM_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct").strip()
 LLM_REQUEST_TIMEOUT = float(os.environ.get("LLM_REQUEST_TIMEOUT", "180"))
 LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "384"))
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_CHAT_MODEL = (
+    os.environ.get("GEMINI_CHAT_MODEL")
+    or os.environ.get("GEMINI_MODEL")
+    or "gemini-1.5-flash"
+).strip()
 EMBEDDING_BASE_URL = _normalize_openai_base_url(os.environ.get("EMBEDDING_BASE_URL", ""))
 EMBEDDING_API_KEY = os.environ.get("EMBEDDING_API_KEY", LLM_API_KEY).strip()
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "").strip()
@@ -271,6 +277,55 @@ class OpenAICompatibleEmbeddingClient:
                         yield delta
 
 
+class GeminiChatClient:
+    """Small Gemini text client used only when the user selects the Gemini chat provider."""
+
+    def __init__(self, api_key: str = GEMINI_API_KEY, model: str = GEMINI_CHAT_MODEL):
+        self.api_key = (api_key or "").strip()
+        self.model = (model or "gemini-1.5-flash").strip()
+        self.is_available = bool(self.api_key)
+
+    @staticmethod
+    def _messages_to_prompt(messages: List[Dict]) -> str:
+        sections = []
+        for message in messages:
+            role = str(message.get("role") or "user").title()
+            content = str(message.get("content") or "").strip()
+            if content:
+                sections.append(f"{role}:\n{content}")
+        return "\n\n".join(sections)
+
+    def chat(self, messages: List[Dict], temperature: float = 0.7) -> str:
+        """Generate a text answer with Gemini's generateContent REST API."""
+        if not self.is_available:
+            raise RuntimeError("Gemini chat is not configured")
+
+        prompt = self._messages_to_prompt(messages)
+        response = httpx.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
+            params={"key": self.api_key},
+            json={
+                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": temperature,
+                    "maxOutputTokens": LLM_MAX_TOKENS,
+                },
+            },
+            timeout=LLM_REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        parts = (
+            payload.get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [])
+        )
+        text = "".join(part.get("text", "") for part in parts).strip()
+        if not text:
+            raise RuntimeError("Gemini returned an empty chat response")
+        return text
+
+
 class OllamaClient:
     """Client for Ollama API interactions."""
 
@@ -442,6 +497,7 @@ class RAGEngine:
 
     def __init__(self):
         self.remote_llm = OpenAICompatibleClient()
+        self.gemini = GeminiChatClient()
         self.remote_embeddings = OpenAICompatibleEmbeddingClient()
         self.ollama = OllamaClient()
         self.supabase = get_supabase_admin_client() if has_supabase_config() else None
@@ -473,6 +529,7 @@ class RAGEngine:
             self.storage_path,
         )
         logger.info("Remote LLM available: %s", self.remote_llm.is_available)
+        logger.info("Gemini chat configured: %s", self.gemini.is_available)
         logger.info("Ollama available: %s", self.ollama.is_available)
         logger.info("Supabase vector store enabled: %s", self.use_supabase_vectors)
         if self.embedding_dimension:
@@ -1271,13 +1328,35 @@ Summarize the most reliable answer supported by the snippets above."""
             {"role": "user", "content": user_prompt},
         ]
 
-    def _chat_with_fallback(self, messages: List[Dict], temperature: float = 0.7) -> str:
+    def _chat_with_fallback(
+        self,
+        messages: List[Dict],
+        temperature: float = 0.7,
+        preferred_provider: str = "auto",
+    ) -> str:
         """Use the remote LLM first, then fall back to Ollama automatically."""
+        provider = (preferred_provider or "auto").strip().lower()
+
+        if provider == "gemini":
+            try:
+                return self.gemini.chat(messages, temperature=temperature)
+            except Exception as exc:
+                logger.warning("Selected Gemini chat failed, falling back to Groq/Ollama: %s", exc)
+
+        if provider == "groq" and not self.remote_llm.is_available:
+            logger.warning("Groq/OpenAI-compatible chat was selected but the remote LLM is unavailable")
+
         if self.remote_llm.is_available:
             try:
                 return self.remote_llm.chat(messages, temperature=temperature)
             except Exception as exc:
                 logger.warning("Remote LLM chat failed, falling back to Ollama: %s", exc)
+
+        if provider == "auto" and self.gemini.is_available:
+            try:
+                return self.gemini.chat(messages, temperature=temperature)
+            except Exception as exc:
+                logger.warning("Gemini auto fallback failed, falling back to Ollama: %s", exc)
 
         return self.ollama.chat(messages, temperature=temperature)
 
@@ -1299,6 +1378,10 @@ Summarize the most reliable answer supported by the snippets above."""
     @staticmethod
     def _clean_snippet(text: str, limit: int = 220) -> str:
         snippet = " ".join((text or "").split())
+        snippet = re.sub(r"\[[^\]]*DATASET[_\-\s]*TAG[^\]]*\]", "", snippet, flags=re.IGNORECASE)
+        snippet = re.sub(r"\bENTITY\s*=\s*[A-Za-z0-9_.-]+", "", snippet, flags=re.IGNORECASE)
+        snippet = re.sub(r"\bSECTION\s*=\s*[A-Za-z0-9_.-]+", "", snippet, flags=re.IGNORECASE)
+        snippet = re.sub(r"\bPROGRAMME\s*=\s*[A-Za-z0-9_.-]+", "", snippet, flags=re.IGNORECASE)
         snippet = re.sub(
             r"source:\s*krmangalam\.edu\.in\s*\|\s*dataset compiled for internal chatbot training purposes",
             "",
@@ -1322,6 +1405,35 @@ Summarize the most reliable answer supported by the snippets above."""
         if len(snippet) > limit:
             snippet = snippet[:limit].rstrip() + "..."
         return snippet
+
+    @classmethod
+    def _sanitize_generated_answer(cls, answer: str) -> str:
+        """Remove index-only metadata from model answers and improve basic bullet readability."""
+        text = str(answer or "").strip()
+        if not text:
+            return text
+
+        lines = []
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            line = re.sub(r"\[[^\]]*DATASET[_\-\s]*TAG[^\]]*\]", "", line, flags=re.IGNORECASE).strip()
+            line = line.strip(" -•\t")
+            if not line:
+                continue
+            if re.fullmatch(r"(ENTITY|SECTION|PROGRAMME)\s*=.*", line, flags=re.IGNORECASE):
+                continue
+            if line.lower().startswith(("dataset tag", "section=", "entity=", "programme=")):
+                continue
+
+            line = re.sub(
+                r"\s+(?=(-\s*(?:Eligibility|Duration|Credits|Curriculum|Programme|Program|Course|Assessment|Career|Outcome|Objective|Tools|Semester)\b))",
+                "\n",
+                line,
+                flags=re.IGNORECASE,
+            )
+            lines.extend(part.strip() for part in line.splitlines() if part.strip())
+
+        return "\n".join(lines)
 
     @classmethod
     def _clean_fallback_points(cls, context_docs: List[Dict], max_points: int = 7) -> List[str]:
@@ -1353,6 +1465,9 @@ Summarize the most reliable answer supported by the snippets above."""
 
             for candidate in candidates:
                 cleaned = candidate.strip(" -•\t")
+                cleaned = re.sub(r"\[[^\]]*DATASET[_\-\s]*TAG[^\]]*\]", "", cleaned, flags=re.IGNORECASE).strip()
+                if re.fullmatch(r"(ENTITY|SECTION|PROGRAMME)\s*=.*", cleaned, flags=re.IGNORECASE):
+                    continue
                 if len(cleaned) < 32:
                     continue
                 if cleaned.endswith("..."):
@@ -1426,8 +1541,15 @@ Summarize the most reliable answer supported by the snippets above."""
         self,
         messages: List[Dict],
         temperature: float = 0.7,
+        preferred_provider: str = "auto",
     ) -> AsyncIterator[str]:
         """Stream from the remote LLM first, then fall back to Ollama."""
+        provider = (preferred_provider or "auto").strip().lower()
+
+        if provider == "gemini":
+            yield self.gemini.chat(messages, temperature=temperature)
+            return
+
         if self.remote_llm.is_available:
             try:
                 async for chunk in self.remote_llm.stream_chat(messages, temperature=temperature):
@@ -1435,6 +1557,10 @@ Summarize the most reliable answer supported by the snippets above."""
                 return
             except Exception as exc:
                 logger.warning("Remote LLM stream failed, falling back to Ollama: %s", exc)
+
+        if provider == "auto" and self.gemini.is_available:
+            yield self.gemini.chat(messages, temperature=temperature)
+            return
 
         async for chunk in self.ollama.stream_chat(messages, temperature=temperature):
             yield chunk
@@ -1805,6 +1931,7 @@ Summarize the most reliable answer supported by the snippets above."""
         query: str,
         context_docs: List[Dict],
         conversation_history: Optional[List[Dict]] = None,
+        chat_provider: str = "auto",
     ) -> str:
         """Generate a grounded response using the best available chat provider."""
         if not context_docs:
@@ -1815,7 +1942,12 @@ Summarize the most reliable answer supported by the snippets above."""
 
         messages = self._build_messages(query, context_docs, conversation_history=conversation_history)
         try:
-            response = self._chat_with_fallback(messages, temperature=0.15)
+            response = self._chat_with_fallback(
+                messages,
+                temperature=0.15,
+                preferred_provider=chat_provider,
+            )
+            response = self._sanitize_generated_answer(response)
             if not self._looks_like_greeting(query) and not self._verify_answer(response, context_docs):
                 logger.warning("Generated answer failed grounding verification for query: %s", query)
                 return self._compose_grounded_fallback(query, context_docs, conversation_history=conversation_history)
@@ -1854,6 +1986,7 @@ Summarize the most reliable answer supported by the snippets above."""
         query: str,
         context_docs: List[Dict],
         conversation_history: Optional[List[Dict]] = None,
+        chat_provider: str = "auto",
     ) -> AsyncIterator[str]:
         """Stream a grounded response using the best available chat provider."""
         relevant_docs = self._filter_relevant_docs(context_docs)
@@ -1866,7 +1999,11 @@ Summarize the most reliable answer supported by the snippets above."""
 
         messages = self._build_messages(query, relevant_docs, conversation_history=conversation_history)
         try:
-            async for chunk in self._stream_with_fallback(messages, temperature=0.15):
+            async for chunk in self._stream_with_fallback(
+                messages,
+                temperature=0.15,
+                preferred_provider=chat_provider,
+            ):
                 yield chunk
         except Exception as exc:
             logger.warning("Streaming generation failed, using grounded fallback answer: %s", exc)
@@ -1877,11 +2014,17 @@ Summarize the most reliable answer supported by the snippets above."""
         query: str,
         top_k: int = 6,
         conversation_history: Optional[List[Dict]] = None,
+        chat_provider: str = "auto",
     ) -> Dict:
         """Complete RAG chat: retrieve context and generate a non-streaming response."""
         retrieved_docs = self.search(query, top_k=top_k, conversation_history=conversation_history)
         relevant_docs = self._filter_relevant_docs(retrieved_docs)
-        response = self.generate_response(query, relevant_docs, conversation_history=conversation_history)
+        response = self.generate_response(
+            query,
+            relevant_docs,
+            conversation_history=conversation_history,
+            chat_provider=chat_provider,
+        )
         return {
             "response": response,
             "sources": self.format_sources(relevant_docs),
