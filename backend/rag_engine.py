@@ -656,6 +656,36 @@ class RAGEngine:
         return f"{anchor}\nFollow-up question: {query}"
 
     @classmethod
+    def _expand_query_for_retrieval(cls, query: str) -> str:
+        """Add handbook-specific anchors so broad programme questions find synopsis/outcome pages."""
+        normalized = (query or "").lower()
+        programme_terms = (
+            "program",
+            "programme",
+            "course",
+            "handbook",
+            "b.tech",
+            "btech",
+            "m.tech",
+            "mtech",
+            "bca",
+            "mca",
+            "mba",
+            "bba",
+            "syllabus",
+            "curriculum",
+        )
+        if not any(term in normalized for term in programme_terms):
+            return query
+
+        handbook_anchors = (
+            "programme synopsis overview eligibility duration credits curriculum syllabus "
+            "course objectives course outcomes programme outcomes semester scheme assessment "
+            "teaching learning evaluation career opportunities graduate attributes"
+        )
+        return f"{query}\nRetrieval anchors for programme handbooks: {handbook_anchors}"
+
+    @classmethod
     def _rerank_results(cls, query: str, items: List[Dict], top_k: int) -> List[Dict]:
         """Blend lexical/title signals back into retrieved results for cleaner top hits."""
         reranked = []
@@ -802,6 +832,43 @@ class RAGEngine:
             noisy_hits = sum(1 for marker in noisy_markers if marker in haystack)
             if noisy_hits:
                 adjustment -= min(0.24, noisy_hits * 0.08)
+
+        programme_query_markers = (
+            "program",
+            "programme",
+            "course",
+            "handbook",
+            "syllabus",
+            "curriculum",
+            "b.tech",
+            "btech",
+            "m.tech",
+            "mtech",
+        )
+        if any(marker in query_text for marker in programme_query_markers):
+            programme_context_markers = (
+                "programme synopsis",
+                "program synopsis",
+                "programme structure",
+                "program structure",
+                "programme outcomes",
+                "program outcomes",
+                "course outcomes",
+                "curriculum",
+                "syllabus",
+                "semester",
+                "credits",
+                "eligibility",
+                "duration",
+                "assessment",
+                "evaluation",
+                "career opportunities",
+                "school of engineering",
+                "handbook",
+            )
+            programme_hits = sum(1 for marker in programme_context_markers if marker in haystack)
+            if programme_hits:
+                adjustment += min(0.34, 0.10 + (programme_hits * 0.05))
 
         return adjustment
 
@@ -1088,8 +1155,14 @@ class RAGEngine:
     ) -> List[Dict]:
         """Build a grounded chat prompt from retrieved document chunks."""
         context_parts = []
-        for index, doc in enumerate(context_docs[:3], 1):
-            context_parts.append(f"[Source {index}: {doc['document_title']}]\n{doc['content']}")
+        for index, doc in enumerate(context_docs[:6], 1):
+            metadata = doc.get("metadata") or {}
+            section_title = metadata.get("section_title") or ""
+            source_header = f"[Source {index}: {doc['document_title']}"
+            if section_title:
+                source_header += f" | Section: {section_title}"
+            source_header += f" | Chunk: {doc.get('chunk_index', 0)}]"
+            context_parts.append(f"{source_header}\n{doc['content']}")
 
         context = "\n\n".join(context_parts)
 
@@ -1114,6 +1187,14 @@ Answer quality checklist:
 - If multiple sources agree, synthesize them instead of listing raw snippets
 - Do not mention numbers, dates, fees, rankings, approvals, contacts, or counts unless they appear in the context
 - If a fact is only partially supported, say that it is based on the indexed documents rather than presenting it as certain"""
+
+        if self._expand_query_for_retrieval(query) != query:
+            system_prompt += """
+
+Programme / handbook answer style:
+- Prefer synopsis, eligibility, duration, credits, curriculum/semester structure, learning outcomes, assessment, labs/projects, internships/placements, and career paths when those items appear in context
+- If the user asks generally about a programme, give a 1-2 line overview followed by short bullets grouped by the available handbook facts
+- Never paste the table of contents or long raw syllabus text; summarize the meaning"""
 
         history_parts = []
         for turn in (conversation_history or [])[-6:]:
@@ -1242,6 +1323,50 @@ Summarize the most reliable answer supported by the snippets above."""
             snippet = snippet[:limit].rstrip() + "..."
         return snippet
 
+    @classmethod
+    def _clean_fallback_points(cls, context_docs: List[Dict], max_points: int = 7) -> List[str]:
+        """Extract readable points from retrieved chunks without exposing raw concatenated text."""
+        points = []
+        seen = set()
+
+        for doc in context_docs:
+            text = cls._clean_snippet(doc.get("content", ""), limit=1200)
+            text = re.sub(r"\s+([?.!])", r"\1", text)
+            text = re.sub(r"(?<=[?!.])\s+", "\n", text)
+            text = re.sub(
+                r"\s+(?=(?:Programme|Program|Course|Eligibility|Duration|Credits|Curriculum|Assessment|Synopsis|Objective|Outcome|Semester|Career|Internship|Project|Laboratory|Lab)\b)",
+                "\n",
+                text,
+            )
+
+            candidates = []
+            for line in text.splitlines():
+                line = line.strip(" -•\t")
+                if not line:
+                    continue
+                if len(line) > 240:
+                    # Preserve complete clauses instead of sending a chopped paragraph.
+                    pieces = re.split(r"\s+[|;]\s+|\s{2,}", line)
+                    candidates.extend(piece.strip() for piece in pieces if piece.strip())
+                else:
+                    candidates.append(line)
+
+            for candidate in candidates:
+                cleaned = candidate.strip(" -•\t")
+                if len(cleaned) < 32:
+                    continue
+                if cleaned.endswith("..."):
+                    cleaned = cleaned[:-3].rstrip()
+                signature = re.sub(r"[^a-z0-9]+", " ", cleaned.lower()).strip()[:110]
+                if not signature or signature in seen:
+                    continue
+                seen.add(signature)
+                points.append(cleaned)
+                if len(points) >= max_points:
+                    return points
+
+        return points
+
     def _compose_grounded_fallback(
         self,
         query: str,
@@ -1265,7 +1390,7 @@ Summarize the most reliable answer supported by the snippets above."""
                 "- What facilities are available on campus?"
             )
 
-        top_docs = context_docs[:2]
+        top_docs = context_docs[:4]
         latest_user_topic = ""
         for turn in reversed(conversation_history or []):
             if turn.get("role") == "user":
@@ -1277,30 +1402,21 @@ Summarize the most reliable answer supported by the snippets above."""
         if latest_user_topic and query.strip().lower() in {"what about the fees?", "and fees?", "what about fees?", "fees?"}:
             lead = f"Continuing from your earlier question about \"{latest_user_topic}\", here is what I found."
 
-        first_doc = top_docs[0]
-        first_title = first_doc.get("document_title", "Unknown source")
-        first_snippet = self._clean_snippet(first_doc.get("content", ""))
+        points = self._clean_fallback_points(top_docs)
 
-        response_parts = [
-            lead,
-            "",
-            first_snippet,
-        ]
+        response_parts = [lead]
 
-        if len(top_docs) > 1:
-            second_doc = top_docs[1]
-            second_snippet = self._clean_snippet(second_doc.get("content", ""))
-            response_parts.extend(
-                [
-                    "",
-                    f"Also relevant: {second_snippet}",
-                ]
-            )
+        if points:
+            response_parts.append("")
+            response_parts.extend(f"- {point}" for point in points)
+        else:
+            first_doc = top_docs[0]
+            response_parts.extend(["", self._clean_snippet(first_doc.get("content", ""), limit=520)])
 
         response_parts.extend(
             [
                 "",
-                "If you want, I can answer a more specific follow-up on this.",
+                "If you want, ask for a specific part such as eligibility, semester-wise curriculum, outcomes, fees, placements, or assessment.",
             ]
         )
 
@@ -1419,7 +1535,9 @@ Summarize the most reliable answer supported by the snippets above."""
         conversation_history: Optional[List[Dict]] = None,
     ) -> List[Dict]:
         """Search for relevant document chunks."""
-        effective_query = self._rewrite_query_with_history(query, conversation_history=conversation_history)
+        effective_query = self._expand_query_for_retrieval(
+            self._rewrite_query_with_history(query, conversation_history=conversation_history)
+        )
         lexical_results: List[Dict] = []
         if self.use_supabase_vectors:
             try:
@@ -1757,7 +1875,7 @@ Summarize the most reliable answer supported by the snippets above."""
     def chat(
         self,
         query: str,
-        top_k: int = 3,
+        top_k: int = 6,
         conversation_history: Optional[List[Dict]] = None,
     ) -> Dict:
         """Complete RAG chat: retrieve context and generate a non-streaming response."""
