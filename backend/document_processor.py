@@ -984,6 +984,10 @@ class DocumentProcessor:
     @classmethod
     def process_file(cls, file_content: bytes, file_type: str) -> Dict:
         """Process file based on type"""
+        normalized_file_type = file_type.lower()
+        if normalized_file_type == "json" and zipfile.is_zipfile(BytesIO(file_content)):
+            normalized_file_type = "zip"
+
         processors = {
             "pdf": cls.process_pdf,
             "docx": cls.process_docx,
@@ -994,7 +998,7 @@ class DocumentProcessor:
             "pptx": cls.process_pptx,
         }
         
-        processor = processors.get(file_type.lower())
+        processor = processors.get(normalized_file_type)
         if not processor:
             return {"success": False, "error": f"Unsupported file type: {file_type}", "chunks": []}
         

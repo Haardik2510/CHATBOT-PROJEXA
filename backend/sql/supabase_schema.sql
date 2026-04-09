@@ -18,7 +18,7 @@ create table if not exists public.documents (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   description text,
-  doc_type text not null default 'pdf' check (doc_type in ('pdf', 'docx', 'txt', 'csv', 'pptx', 'url')),
+  doc_type text not null default 'pdf' check (doc_type in ('pdf', 'docx', 'txt', 'csv', 'pptx', 'json', 'url')),
   filename text not null,
   storage_bucket text not null default 'documents',
   storage_path text,
@@ -89,6 +89,17 @@ create index if not exists idx_document_chunks_document_id on public.document_ch
 create index if not exists idx_document_chunks_embedding
 on public.document_chunks
 using hnsw (embedding vector_cosine_ops);
+
+do $$
+begin
+  alter table public.documents
+    drop constraint if exists documents_doc_type_check;
+
+  alter table public.documents
+    add constraint documents_doc_type_check
+    check (doc_type in ('pdf', 'docx', 'txt', 'csv', 'pptx', 'json', 'url'));
+end;
+$$;
 
 create or replace function public.upsert_document_chunk(
   p_document_id uuid,

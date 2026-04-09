@@ -2184,7 +2184,7 @@ async def upload_document(
         "csv": "csv",
         "json": "json",
         "jsonl": "json",
-        "zip": "zip",
+        "zip": "json",
         "pptx": "pptx",
         "ppt": "pptx"
     }
