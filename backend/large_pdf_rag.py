@@ -591,9 +591,89 @@ def _sentence_safe_chunk_splitter():
     try:
         from langchain_text_splitters import RecursiveCharacterTextSplitter
     except ImportError as exc:
-        raise RuntimeError(
-            "Large PDF chunking requires the optional dependency 'langchain-text-splitters'."
-        ) from exc
+        LOGGER.warning(
+            "langchain-text-splitters is not installed; using the built-in large-PDF splitter instead: %s",
+            exc,
+        )
+
+        class FallbackRecursiveSplitter:
+            """Small recursive splitter with sentence-boundary cleanup."""
+
+            separators = ["\n\n", "\n", ". ", "? ", "! ", "; ", ": ", ", ", " "]
+
+            def split_text(self, text: str) -> List[str]:
+                return self._split_recursive(_normalize_text(text), self.separators)
+
+            def _split_recursive(self, text: str, separators: Sequence[str]) -> List[str]:
+                if len(text) <= CHUNK_SIZE:
+                    return [text] if text else []
+                if not separators:
+                    return self._split_long_text(text)
+
+                separator = separators[0]
+                parts = text.split(separator)
+                if len(parts) == 1:
+                    return self._split_recursive(text, separators[1:])
+
+                pieces: List[str] = []
+                current = ""
+                for part in parts:
+                    candidate = part if not current else f"{current}{separator}{part}"
+                    if len(candidate) <= CHUNK_SIZE:
+                        current = candidate
+                        continue
+
+                    if current:
+                        pieces.extend(self._sentence_safe_piece(current))
+                    current = part
+
+                if current:
+                    pieces.extend(self._sentence_safe_piece(current))
+
+                if CHUNK_OVERLAP > 0 and len(pieces) > 1:
+                    pieces = self._add_overlap(pieces)
+                return pieces
+
+            def _split_long_text(self, text: str) -> List[str]:
+                pieces = []
+                step = max(1, CHUNK_SIZE - CHUNK_OVERLAP)
+                for start in range(0, len(text), step):
+                    pieces.append(text[start:start + CHUNK_SIZE])
+                return pieces
+
+            def _sentence_safe_piece(self, text: str) -> List[str]:
+                text = _normalize_text(text)
+                if len(text) <= CHUNK_SIZE:
+                    return [text] if text else []
+
+                sentences = _sentence_split(text)
+                if len(sentences) <= 1:
+                    return self._split_long_text(text)
+
+                pieces = []
+                current = ""
+                for sentence in sentences:
+                    candidate = sentence if not current else f"{current} {sentence}"
+                    if len(candidate) <= CHUNK_SIZE:
+                        current = candidate
+                        continue
+                    if current:
+                        pieces.append(current)
+                    current = sentence
+                if current:
+                    pieces.append(current)
+                return pieces
+
+            @staticmethod
+            def _add_overlap(pieces: List[str]) -> List[str]:
+                overlapped = [pieces[0]]
+                for piece in pieces[1:]:
+                    previous_tail = overlapped[-1][-CHUNK_OVERLAP:].strip()
+                    combined = f"{previous_tail} {piece}".strip() if previous_tail else piece
+                    overlapped.append(combined[:CHUNK_SIZE])
+                return overlapped
+
+        return FallbackRecursiveSplitter()
 
     return RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,

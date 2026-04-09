@@ -63,6 +63,16 @@ class GeminiEventEnhancer:
         return "\n".join(fragments)
 
     @staticmethod
+    def _event_sentence(text: str, limit: int = 260) -> str:
+        clean = KRMUEventsFeed._clean_event_summary(text or "", limit=limit)
+        sentences = re.split(r"(?<=[.!?])\s+", clean)
+        for sentence in sentences:
+            sentence = sentence.strip(" -|")
+            if len(sentence) >= 40:
+                return KRMUEventsFeed._clean_text(sentence, limit=limit)
+        return KRMUEventsFeed._clean_text(clean, limit=limit)
+
+    @staticmethod
     def _fallback_summary(query: str, events: List[Dict]) -> str:
         if not events:
             return (
@@ -72,14 +82,28 @@ class GeminiEventEnhancer:
 
         if len(events) == 1:
             event = events[0]
-            summary = event.get("summary") or event.get("snippet") or "Official event details are available on the linked page."
+            summary = GeminiEventEnhancer._event_sentence(
+                event.get("summary") or event.get("snippet") or "Official event details are available on the linked page.",
+                limit=420,
+            )
             title = event.get("title", "KRMU event")
-            return f"{title} is one of the official K.R. Mangalam University happenings. {summary}"
+            date = event.get("published_at", "")
+            lines = [f"{title} is listed on KRMU's official happenings pages."]
+            if date:
+                lines.append(f"- Published: {date}")
+            lines.append(f"- Summary: {summary}")
+            lines.append("- Images: I have attached the official visuals I could retrieve below.")
+            return "\n".join(lines)
 
-        lines = ["Here are the current K.R. Mangalam University events I found on the official happenings pages.", ""]
-        for event in events[:3]:
-            summary = event.get("summary") or event.get("snippet") or "Official event details are available on the linked page."
-            lines.append(f"- {event.get('title', 'KRMU event')}: {summary}")
+        lines = ["Here are the latest K.R. Mangalam University happenings I found on the official events pages:", ""]
+        for event in events[:4]:
+            title = event.get("title", "KRMU event")
+            date = event.get("published_at", "")
+            summary = GeminiEventEnhancer._event_sentence(event.get("summary") or event.get("snippet") or "", limit=260)
+            date_text = f" ({date})" if date else ""
+            lines.append(f"- {title}{date_text}: {summary or 'official details are available on the linked event page.'}")
+        lines.append("")
+        lines.append("I’ve attached the relevant official images below when the KRMU page exposes them.")
         return "\n".join(lines)
 
     @staticmethod
@@ -138,8 +162,8 @@ class GeminiEventEnhancer:
                         f"Event {index} title: {event.get('title', '')}",
                         f"Event {index} url: {event.get('url', '')}",
                         f"Event {index} published: {event.get('published_at', '')}",
-                        f"Event {index} snippet: {event.get('snippet', '')}",
-                        f"Event {index} body summary: {event.get('summary', '')}",
+                        f"Event {index} snippet: {KRMUEventsFeed._clean_event_summary(event.get('snippet', ''), limit=360)}",
+                        f"Event {index} body summary: {KRMUEventsFeed._clean_event_summary(event.get('summary', ''), limit=700)}",
                     ]
                 )
             )
@@ -152,8 +176,9 @@ class GeminiEventEnhancer:
             "If a detail is missing, say it is not clearly stated on the official page.\n"
             "Write like a polished production chatbot.\n"
             "Do not use headings such as Direct answer, Highlights, Why it matters, or Source.\n"
-            "Start with a natural summary paragraph.\n"
-            "Use short bullets only if they truly improve clarity.\n"
+            "Format multi-event answers as short, clean bullets: '- Event title: one helpful sentence.'\n"
+            "Format single-event answers as 1 short intro sentence followed by 2-4 factual bullets.\n"
+            "Never paste navigation text, school lists, quick links, repeated titles, or raw page chrome.\n"
             "Keep source citations out of the body because the UI will render sources separately.\n"
             "Keep it elegant, readable, and under 220 words unless the user asked for current events across multiple items.\n\n"
             f"User query: {query}\n"
@@ -272,6 +297,46 @@ class KRMUEventsFeed:
         if len(cleaned) > limit:
             return f"{cleaned[:limit].rstrip()}..."
         return cleaned
+
+    @classmethod
+    def _clean_event_summary(cls, text: str, limit: int = 700) -> str:
+        """Remove site chrome/nav text so event answers read like summaries."""
+        cleaned = cls._clean_text(text, limit=max(limit * 3, 1200))
+        noise_markers = (
+            "quick links",
+            "browse programmes",
+            "placements",
+            "life at krmu",
+            "library lms erp",
+            "mandatory disclosures",
+            "feedback",
+            "transport route",
+            "campus mandate",
+            "about krmu",
+            "academic schools",
+            "school of ",
+            "published on:",
+        )
+        parts = re.split(r"(?<=[.!?])\s+|\s{2,}", cleaned)
+        useful_parts = []
+        for part in parts:
+            normalized = cls._normalize_match_text(part)
+            if len(part) < 35:
+                continue
+            if any(marker in normalized for marker in noise_markers):
+                continue
+            if normalized.count("published on") > 0:
+                continue
+            useful_parts.append(part.strip())
+            if len(" ".join(useful_parts)) >= limit:
+                break
+
+        if useful_parts:
+            return cls._clean_text(" ".join(useful_parts), limit=limit)
+
+        cleaned = re.split(r"\bQuick Links\b|\bAbout KRMU\b|\bBrowse Programmes\b", cleaned, maxsplit=1)[0]
+        cleaned = re.sub(r"\bPublished On:\s*[^.]{0,80}", "", cleaned, flags=re.IGNORECASE)
+        return cls._clean_text(cleaned, limit=limit)
 
     @classmethod
     def _normalize_match_text(cls, value: str) -> str:
@@ -501,8 +566,10 @@ class KRMUEventsFeed:
             or fallback_title,
             limit=180,
         )
-        summary = cls._extract_body_summary(soup) or fallback_snippet
+        summary = cls._clean_event_summary(cls._extract_body_summary(soup) or fallback_snippet)
         images = DocumentProcessor.extract_html_images(soup, url, source_title=title, max_images=3)
+        if cls._is_generic_title(title) or title.lower().startswith("vibrant events"):
+            title = fallback_title
 
         return {
             "title": title or fallback_title,

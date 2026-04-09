@@ -1269,11 +1269,50 @@ def _process_pdf_job_sync(document: Dict[str, Any], emit: Optional[Any] = None) 
                 }
             )
 
-        result = embed_large_pdf_chunks(
-            decorated_chunks,
-            collection_name,
-            progress_callback=_emit,
-        )
+        try:
+            result = embed_large_pdf_chunks(
+                decorated_chunks,
+                collection_name,
+                progress_callback=_emit,
+            )
+        except RuntimeError as exc:
+            message = str(exc)
+            optional_dependency_error = "optional dependency" in message.lower() or "sentence-transformers" in message.lower()
+            if not optional_dependency_error:
+                raise
+
+            logger.warning(
+                "Advanced large-PDF embedding stack is unavailable; indexing %s with the app RAG engine instead: %s",
+                document["id"],
+                exc,
+            )
+            if emit:
+                emit(
+                    {
+                        "stage": "embedding",
+                        "progress": 72,
+                        "detail": "Using Render-safe fallback indexer",
+                    }
+                )
+
+            chunk_count = rag_engine.add_document_chunks(
+                document_id=document["id"],
+                document_title=normalized_title,
+                chunks=[chunk["text"] for chunk in decorated_chunks],
+                metadata={
+                    "doc_type": "pdf",
+                    "job_id": document["id"],
+                    "collection_name": rag_engine.collection_name,
+                    "large_pdf_fallback": True,
+                },
+            )
+            result = {
+                "collection_name": rag_engine.collection_name,
+                "chunks_indexed": chunk_count,
+                "storage_path": rag_engine.storage_path,
+                "fallback_indexer": "app_rag_engine",
+            }
+
         gc.collect()
         result["page_count"] = len(pages)
         result["collection_name"] = collection_name
