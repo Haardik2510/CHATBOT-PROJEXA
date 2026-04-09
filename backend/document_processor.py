@@ -360,6 +360,106 @@ class DocumentProcessor:
 
         return extracted
 
+    @staticmethod
+    def _format_table_matrix(table_rows: List[List], table_label: str = "Table") -> List[str]:
+        """Convert a rectangular table into retrieval-friendly row statements."""
+        normalized_rows = []
+        for row in table_rows or []:
+            normalized_row = []
+            for cell in row or []:
+                value = DocumentProcessor.clean_text(str(cell or ""))
+                normalized_row.append(value)
+            if any(normalized_row):
+                normalized_rows.append(normalized_row)
+
+        if not normalized_rows:
+            return []
+
+        lines = [table_label]
+        header = normalized_rows[0]
+
+        def looks_like_header(row: List[str]) -> bool:
+            filled = [cell for cell in row if cell]
+            if len(filled) < 2:
+                return False
+            joined = " ".join(filled).lower()
+            header_markers = {
+                "parameter",
+                "details",
+                "particulars",
+                "description",
+                "course",
+                "code",
+                "credits",
+                "semester",
+                "subject",
+                "component",
+            }
+            return any(marker in joined for marker in header_markers)
+
+        has_header = looks_like_header(header)
+        data_rows = normalized_rows[1:] if has_header else normalized_rows
+
+        for row_index, row in enumerate(data_rows, start=1):
+            if has_header:
+                pairs = []
+                for column_index, cell in enumerate(row):
+                    if not cell:
+                        continue
+                    heading = header[column_index] if column_index < len(header) and header[column_index] else f"Column {column_index + 1}"
+                    pairs.append(f"{heading}: {cell}")
+                if pairs:
+                    lines.append(f"Table row {row_index}: " + "; ".join(pairs))
+            elif len([cell for cell in row if cell]) == 2:
+                left, right = [cell for cell in row if cell]
+                lines.append(f"Table row {row_index}: {left}: {right}")
+            else:
+                joined = " | ".join(cell for cell in row if cell)
+                if joined:
+                    lines.append(f"Table row {row_index}: {joined}")
+
+        return lines if len(lines) > 1 else []
+
+    @classmethod
+    def _extract_pdf_tables_text(cls, file_content: bytes) -> str:
+        """Extract ruled PDF tables with PyMuPDF and preserve cell relationships."""
+        try:
+            import fitz
+        except ImportError:
+            return ""
+
+        table_lines = []
+        try:
+            pdf = fitz.open(stream=file_content, filetype="pdf")
+        except Exception as exc:
+            logger.debug("PDF table extraction skipped: %s", exc)
+            return ""
+
+        try:
+            for page_index, page in enumerate(pdf, start=1):
+                if not hasattr(page, "find_tables"):
+                    return ""
+                try:
+                    table_finder = page.find_tables()
+                except Exception as exc:
+                    logger.debug("PyMuPDF table detection failed on page %s: %s", page_index, exc)
+                    continue
+
+                for table_index, table in enumerate(getattr(table_finder, "tables", []) or [], start=1):
+                    try:
+                        rows = table.extract()
+                    except Exception as exc:
+                        logger.debug("PyMuPDF table extraction failed on page %s: %s", page_index, exc)
+                        continue
+
+                    table_lines.extend(
+                        cls._format_table_matrix(rows, table_label=f"PDF table {table_index} on page {page_index}")
+                    )
+        finally:
+            pdf.close()
+
+        return cls.clean_text("\n".join(table_lines))
+
     @classmethod
     def _extract_docx_images(cls, file_content: bytes, max_images: int = 4) -> List[Dict]:
         """Extract embedded images from a DOCX document."""
@@ -458,6 +558,9 @@ class DocumentProcessor:
                     page_texts.append("")
             
             extracted_text = cls.clean_text("\n".join(text_parts))
+            table_text = cls._extract_pdf_tables_text(file_content)
+            if table_text:
+                extracted_text = cls.clean_text(f"{extracted_text}\n\nExtracted PDF tables\n{table_text}")
             used_ocr = False
             ocr_engine = None
 
@@ -639,11 +742,13 @@ class DocumentProcessor:
                     text_parts.append(para.text)
             
             # Also extract text from tables
-            for table in doc.tables:
+            for table_index, table in enumerate(doc.tables, start=1):
+                table_rows = []
                 for row in table.rows:
-                    row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
-                    if row_text:
-                        text_parts.append(row_text)
+                    table_rows.append([cell.text.strip() for cell in row.cells])
+                text_parts.extend(
+                    cls._format_table_matrix(table_rows, table_label=f"DOCX table {table_index}")
+                )
             
             full_text = cls.clean_text("\n".join(text_parts))
             chunks = cls.chunk_text(full_text)
@@ -980,10 +1085,12 @@ class DocumentProcessor:
                     if hasattr(shape, "text") and shape.text.strip():
                         slide_texts.append(shape.text)
                     elif hasattr(shape, "table"):
+                        table_rows = []
                         for row in shape.table.rows:
-                            row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
-                            if row_text:
-                                slide_texts.append(row_text)
+                            table_rows.append([cell.text.strip() for cell in row.cells])
+                        slide_texts.extend(
+                            cls._format_table_matrix(table_rows, table_label=f"PPTX table on slide {slide_num}")
+                        )
                 
                 if len(slide_texts) > 1:
                     text_parts.append("\n".join(slide_texts))
