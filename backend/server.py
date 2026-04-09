@@ -916,7 +916,7 @@ def _normalize_answer_mode(answer_mode: Optional[str]) -> str:
 def _normalize_chat_provider(chat_provider: Optional[str]) -> str:
     """Normalize the requested LLM provider."""
     provider = (chat_provider or "auto").strip().lower()
-    return provider if provider in {"auto", "groq", "gemini"} else "auto"
+    return provider if provider in {"auto", "groq", "gemini", "openai"} else "auto"
 
 
 async def _resolve_internet_chat_result(

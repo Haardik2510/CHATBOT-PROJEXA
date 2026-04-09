@@ -44,6 +44,7 @@ const CHAT_PROVIDER_LABELS = {
   auto: "Auto LLM",
   groq: "Groq",
   gemini: "Gemini",
+  openai: "OpenAI",
 };
 
 const shortcuts = [
@@ -314,7 +315,7 @@ export default function ChatView() {
   }, []);
 
   const selectChatProvider = (provider) => {
-    const normalizedProvider = ["auto", "groq", "gemini"].includes(provider) ? provider : "auto";
+    const normalizedProvider = ["auto", "groq", "gemini", "openai"].includes(provider) ? provider : "auto";
     setChatProvider(normalizedProvider);
     localStorage.setItem("scholarPulseChatProvider", normalizedProvider);
     toast.success(`${CHAT_PROVIDER_LABELS[normalizedProvider]} selected for chat answers.`);
@@ -1070,6 +1071,13 @@ export default function ChatView() {
                   >
                     <span className="text-sm font-semibold">Gemini</span>
                     <span className="mt-1 text-xs text-[#7181a6]">Use your Gemini API key for the final answer.</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => selectChatProvider("openai")}
+                    className="flex cursor-pointer flex-col items-start rounded-xl px-3 py-3 focus:bg-[#eef3ff] focus:text-[#0b193c]"
+                  >
+                    <span className="text-sm font-semibold">OpenAI</span>
+                    <span className="mt-1 text-xs text-[#7181a6]">Use your OpenAI API key for the final grounded answer.</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

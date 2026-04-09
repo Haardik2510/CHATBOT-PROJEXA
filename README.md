@@ -171,6 +171,11 @@ LLM_MODEL=llama-3.1-70b-versatile
 LLM_REQUEST_TIMEOUT=60
 LLM_MAX_TOKENS=384
 
+# Optional OpenAI chat-provider switch
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4.1-mini
+OPENAI_BASE_URL=https://api.openai.com/v1
+
 # Optional Gemini chat switch + official KRMU events/news enrichment
 GEMINI_API_KEY=
 GEMINI_CHAT_MODEL=gemini-1.5-flash
@@ -185,8 +190,9 @@ ENABLE_WEB_FALLBACK=false
 
 Notes:
 
-- `LLM_*` is for the remote chat model
-- `GEMINI_*` is optional and is only used for official KRMU happenings/news enrichment
+- `LLM_*` is for the default Groq/OpenAI-compatible remote chat model
+- `OPENAI_*` is optional and powers the OpenAI option in the chat model switcher
+- `GEMINI_*` is optional and powers Gemini chat plus official KRMU happenings/news enrichment
 - `EMBEDDING_*` is optional and only needed if you want remote embeddings
 - if `EMBEDDING_*` is not configured, the app falls back to Ollama embeddings and then hash-based safeguards when necessary
 - the advanced large-PDF hybrid pipeline is kept optional and is not required for the normal Render deployment
@@ -380,6 +386,7 @@ Make sure Render has:
 - valid Supabase keys
 - correct `CORS_ORIGINS`
 - remote LLM env vars if using hosted chat
+- optional `OPENAI_API_KEY` and `OPENAI_MODEL` if you want the OpenAI chat-provider option
 - optional `GEMINI_API_KEY` and `GEMINI_MODEL` if you want enriched KRMU event summaries/images
 - the default web service does not need the full optional large-PDF ML dependency stack to start successfully
 
@@ -403,7 +410,7 @@ It reports key status like:
 - KRMU-only curated dataset expanded for better facility-level answers
 - database retrieval improved with lexical fallback and better grounding logic
 - database answers formatted more cleanly and conservatively
-- chat answers can be switched between Auto, Groq, and Gemini from the chat toolbar
+- chat answers can be switched between Auto, Groq, Gemini, and OpenAI from the chat toolbar
 - raw dataset tags/internal metadata are stripped from generated chat answers
 - PDF, DOCX, and PPTX table rows are preserved as labeled facts during indexing
 - official KRMU happenings/news scraping added for event summaries and images

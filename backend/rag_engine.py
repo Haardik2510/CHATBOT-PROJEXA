@@ -47,6 +47,9 @@ LLM_API_KEY = os.environ.get("LLM_API_KEY", "").strip()
 LLM_MODEL = os.environ.get("LLM_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct").strip()
 LLM_REQUEST_TIMEOUT = float(os.environ.get("LLM_REQUEST_TIMEOUT", "180"))
 LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "384"))
+OPENAI_BASE_URL = _normalize_openai_base_url(os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini").strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GEMINI_CHAT_MODEL = (
     os.environ.get("GEMINI_CHAT_MODEL")
@@ -497,6 +500,11 @@ class RAGEngine:
 
     def __init__(self):
         self.remote_llm = OpenAICompatibleClient()
+        self.openai_llm = OpenAICompatibleClient(
+            base_url=OPENAI_BASE_URL,
+            model=OPENAI_MODEL,
+            api_key=OPENAI_API_KEY,
+        )
         self.gemini = GeminiChatClient()
         self.remote_embeddings = OpenAICompatibleEmbeddingClient()
         self.ollama = OllamaClient()
@@ -529,6 +537,7 @@ class RAGEngine:
             self.storage_path,
         )
         logger.info("Remote LLM available: %s", self.remote_llm.is_available)
+        logger.info("OpenAI chat available: %s", self.openai_llm.is_available)
         logger.info("Gemini chat configured: %s", self.gemini.is_available)
         logger.info("Ollama available: %s", self.ollama.is_available)
         logger.info("Supabase vector store enabled: %s", self.use_supabase_vectors)
@@ -1343,6 +1352,12 @@ Summarize the most reliable answer supported by the snippets above."""
             except Exception as exc:
                 logger.warning("Selected Gemini chat failed, falling back to Groq/Ollama: %s", exc)
 
+        if provider == "openai":
+            try:
+                return self.openai_llm.chat(messages, temperature=temperature)
+            except Exception as exc:
+                logger.warning("Selected OpenAI chat failed, falling back to Groq/Ollama: %s", exc)
+
         if provider == "groq" and not self.remote_llm.is_available:
             logger.warning("Groq/OpenAI-compatible chat was selected but the remote LLM is unavailable")
 
@@ -1351,6 +1366,12 @@ Summarize the most reliable answer supported by the snippets above."""
                 return self.remote_llm.chat(messages, temperature=temperature)
             except Exception as exc:
                 logger.warning("Remote LLM chat failed, falling back to Ollama: %s", exc)
+
+        if provider == "auto" and self.openai_llm.is_available:
+            try:
+                return self.openai_llm.chat(messages, temperature=temperature)
+            except Exception as exc:
+                logger.warning("OpenAI auto fallback failed, falling back to Gemini/Ollama: %s", exc)
 
         if provider == "auto" and self.gemini.is_available:
             try:
@@ -1550,6 +1571,10 @@ Summarize the most reliable answer supported by the snippets above."""
             yield self.gemini.chat(messages, temperature=temperature)
             return
 
+        if provider == "openai":
+            yield self.openai_llm.chat(messages, temperature=temperature)
+            return
+
         if self.remote_llm.is_available:
             try:
                 async for chunk in self.remote_llm.stream_chat(messages, temperature=temperature):
@@ -1557,6 +1582,10 @@ Summarize the most reliable answer supported by the snippets above."""
                 return
             except Exception as exc:
                 logger.warning("Remote LLM stream failed, falling back to Ollama: %s", exc)
+
+        if provider == "auto" and self.openai_llm.is_available:
+            yield self.openai_llm.chat(messages, temperature=temperature)
+            return
 
         if provider == "auto" and self.gemini.is_available:
             yield self.gemini.chat(messages, temperature=temperature)
@@ -2056,8 +2085,14 @@ Summarize the most reliable answer supported by the snippets above."""
         chat_provider = "fallback"
         chat_model = "fallback"
         if self.remote_llm.is_available:
-            chat_provider = "vllm"
+            chat_provider = "groq"
             chat_model = self.remote_llm.model
+        elif self.openai_llm.is_available:
+            chat_provider = "openai"
+            chat_model = self.openai_llm.model
+        elif self.gemini.is_available:
+            chat_provider = "gemini"
+            chat_model = self.gemini.model
         elif self.ollama.is_available:
             chat_provider = "ollama"
             chat_model = OLLAMA_CHAT_MODEL
@@ -2075,6 +2110,10 @@ Summarize the most reliable answer supported by the snippets above."""
             "remote_llm_base_url": self.remote_llm.base_url or None,
             "remote_llm_model": self.remote_llm.model,
             "remote_llm_models": self.remote_llm.list_models() if self.remote_llm.is_available else [],
+            "openai_available": self.openai_llm.is_available,
+            "openai_model": self.openai_llm.model,
+            "gemini_available": self.gemini.is_available,
+            "gemini_model": self.gemini.model,
             "ollama_available": self.ollama.is_available,
             "ollama_models": self.ollama.list_models() if self.ollama.is_available else [],
             "embedding_model": self._embedding_model_name(),
@@ -2083,10 +2122,12 @@ Summarize the most reliable answer supported by the snippets above."""
     def refresh_model_connections(self) -> Dict[str, bool]:
         """Refresh both remote and local model provider connections."""
         self.remote_llm._check_availability()
+        self.openai_llm._check_availability()
         self.remote_embeddings._check_availability()
         self.ollama._check_availability()
         return {
             "remote_llm_available": self.remote_llm.is_available,
+            "openai_available": self.openai_llm.is_available,
             "ollama_available": self.ollama.is_available,
             "remote_embeddings_available": self.remote_embeddings.is_available,
         }
