@@ -2091,7 +2091,7 @@ async def chat_stream(
         )
 
     sources = _build_source_citations(source_payload)
-    streamed_images = _build_chat_images(rag_engine.format_images(retrieved_docs))
+    streamed_images = _build_chat_images(rag_engine.format_images(retrieved_docs, query=chat_request.message))
 
     async def event_stream():
         response_parts = []

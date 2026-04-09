@@ -2054,14 +2054,62 @@ Summarize the most reliable answer supported by the snippets above."""
 
         return sources[:3]
 
-    def format_images(self, retrieved_docs: List[Dict], max_images: int = 4) -> List[Dict]:
-        """Collect unique image references from retrieved document metadata."""
+    @classmethod
+    def _image_matches_query(cls, query: str, doc: Dict, image: Dict) -> bool:
+        """Avoid showing unrelated extracted document assets in academic answers."""
+        origin = (image.get("origin") or "").strip().lower()
+        source_url = (image.get("source_url") or "").strip().lower()
+        source_title = image.get("source_title") or doc.get("document_title", "")
+        alt = image.get("alt", "")
+        doc_title = doc.get("document_title", "")
+
+        # Website/event images are already selected from official pages. Keep them available.
+        if origin == "website" or "krmangalam.edu.in" in source_url:
+            return True
+
+        query_terms = cls._extract_query_terms(query, max_terms=10)
+        if not query_terms:
+            return False
+
+        image_text = f"{source_title} {alt} {doc_title}".lower()
+        if not image_text.strip():
+            return False
+
+        matches = sum(1 for term in query_terms if term in image_text)
+        required_matches = 1 if len(query_terms) <= 3 else 2
+        if matches < required_matches:
+            return False
+
+        # Generic extraction captions are not enough by themselves.
+        generic_captions = (
+            "document image",
+            "embedded document image",
+            "image from page",
+        )
+        alt_lower = str(alt or "").lower()
+        if any(caption in alt_lower for caption in generic_captions) and matches < 2:
+            return False
+
+        return True
+
+    def format_images(
+        self,
+        retrieved_docs: List[Dict],
+        max_images: int = 4,
+        query: str = "",
+    ) -> List[Dict]:
+        """Collect relevant image references from retrieved document metadata."""
         images = []
         seen = set()
 
         for doc in retrieved_docs:
+            if float(doc.get("relevance_score", 0.0) or 0.0) < 0.50:
+                continue
             metadata = doc.get("metadata") or {}
             for image in metadata.get("images", []) or []:
+                if query and not self._image_matches_query(query, doc, image):
+                    continue
+
                 key = (
                     image.get("storage_path")
                     or image.get("url")
@@ -2273,7 +2321,7 @@ Summarize the most reliable answer supported by the snippets above."""
         return {
             "response": response,
             "sources": self.format_sources(relevant_docs),
-            "images": self.format_images(relevant_docs),
+            "images": self.format_images(relevant_docs, query=query),
         }
 
     def delete_document(self, document_id: str) -> bool:
