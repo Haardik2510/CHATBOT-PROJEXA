@@ -723,33 +723,104 @@ class RAGEngine:
 
     @classmethod
     def _expand_query_for_retrieval(cls, query: str) -> str:
-        """Add handbook-specific anchors so broad programme questions find synopsis/outcome pages."""
+        """Add focused KRMU-domain anchors so broad questions find the right pages/sections."""
         normalized = (query or "").lower()
-        programme_terms = (
-            "program",
-            "programme",
-            "course",
-            "handbook",
-            "b.tech",
-            "btech",
-            "m.tech",
-            "mtech",
-            "bca",
-            "mca",
-            "mba",
-            "bba",
-            "syllabus",
-            "curriculum",
-        )
-        if not any(term in normalized for term in programme_terms):
+
+        intent_anchor_packs = [
+            (
+                (
+                    "program", "programme", "course", "handbook", "b.tech", "btech",
+                    "m.tech", "mtech", "bca", "mca", "mba", "bba", "syllabus", "curriculum",
+                ),
+                (
+                    "programme synopsis overview eligibility duration credits curriculum syllabus "
+                    "course objectives course outcomes programme outcomes semester scheme assessment "
+                    "teaching learning evaluation career opportunities graduate attributes laboratories projects"
+                ),
+            ),
+            (
+                ("admission", "admissions", "apply", "application", "enrol", "enroll", "registration"),
+                (
+                    "admission process application steps eligibility selection criteria entrance exam "
+                    "document verification counselling seat allotment fee payment reporting enrollment"
+                ),
+            ),
+            (
+                ("fee", "fees", "scholarship", "scholarships", "financial aid", "refund", "payment"),
+                (
+                    "fee structure tuition hostel transport scholarship eligibility scholarship amount "
+                    "payment schedule refund policy financial assistance education loan"
+                ),
+            ),
+            (
+                ("hostel", "hostels", "accommodation", "mess", "warden", "residence"),
+                (
+                    "hostel accommodation rooms mess dining warden security safety medical support "
+                    "laundry recreational facilities hostel rules curfew visitor policy"
+                ),
+            ),
+            (
+                ("placement", "placements", "career", "recruiter", "recruiters", "internship", "package", "ctc"),
+                (
+                    "placement cell career development centre recruiters internships highest package "
+                    "average package training aptitude interviews resume industry partnerships"
+                ),
+            ),
+            (
+                ("faculty", "teacher", "professor", "dean", "hod", "mentor", "staff"),
+                (
+                    "faculty profile designation department school qualification specialization experience "
+                    "research interests publications dean head of department mentor"
+                ),
+            ),
+            (
+                ("library", "lms", "books", "journal", "journals", "database", "e-library"),
+                (
+                    "library learning resource centre books journals e-resources digital library databases "
+                    "reading room borrowing library hours library services research support"
+                ),
+            ),
+            (
+                ("transport", "bus", "route", "shuttle", "commute", "metro"),
+                (
+                    "transport bus route shuttle pickup drop campus commute metro connectivity "
+                    "transport fee transport office route schedule"
+                ),
+            ),
+            (
+                ("exam", "examination", "assessment", "attendance", "credit", "credits", "grade", "gpa", "cgpa"),
+                (
+                    "examination assessment internal evaluation end term credits grade point attendance "
+                    "promotion criteria back paper reappear practical viva project evaluation"
+                ),
+            ),
+            (
+                ("campus", "facility", "facilities", "infrastructure", "lab", "labs", "medical", "sports", "cafeteria"),
+                (
+                    "campus facilities infrastructure laboratories sports medical room cafeteria auditorium "
+                    "classrooms moot court studio workshop innovation centre safety security"
+                ),
+            ),
+            (
+                ("event", "events", "happening", "happenings", "news", "seminar", "workshop", "convocation", "hackathon"),
+                (
+                    "official happenings news event title published date event summary venue speaker workshop "
+                    "seminar conference hackathon convocation freshers cultural technical fest"
+                ),
+            ),
+        ]
+
+        matched_packs = [
+            anchor_text
+            for trigger_terms, anchor_text in intent_anchor_packs
+            if any(term in normalized for term in trigger_terms)
+        ]
+
+        if not matched_packs:
             return query
 
-        handbook_anchors = (
-            "programme synopsis overview eligibility duration credits curriculum syllabus "
-            "course objectives course outcomes programme outcomes semester scheme assessment "
-            "teaching learning evaluation career opportunities graduate attributes"
-        )
-        return f"{query}\nRetrieval anchors for programme handbooks: {handbook_anchors}"
+        unique_anchor_text = " ".join(dict.fromkeys(" ".join(matched_packs).split()))
+        return f"{query}\nRetrieval anchors for KRMU answer quality: {unique_anchor_text}"
 
     @classmethod
     def _rerank_results(cls, query: str, items: List[Dict], top_k: int) -> List[Dict]:
@@ -793,6 +864,18 @@ class RAGEngine:
             normalized_context = cls._normalize_for_verification(context)
             if any(ngram in normalized_context for ngram in claim_ngrams):
                 return True
+            context_words = set(normalized_context.split())
+            meaningful_claim_words = [
+                word for word in claim_words
+                if len(word) >= 4 and word not in {
+                    "this", "that", "with", "from", "about", "their", "there", "which",
+                    "programme", "program", "university", "krmu", "mangalam",
+                }
+            ]
+            if meaningful_claim_words:
+                overlap = sum(1 for word in meaningful_claim_words if word in context_words)
+                if overlap / len(meaningful_claim_words) >= 0.72:
+                    return True
         return False
 
     @classmethod
@@ -812,8 +895,13 @@ class RAGEngine:
             if any(token in lowered for token in ("i can help", "please rephrase", "if you want", "let me know")):
                 continue
             checked_claims += 1
-            if not cls._claim_is_grounded(claim, contexts):
-                return False
+            if cls._claim_is_grounded(claim, contexts):
+                continue
+
+            # A single conversational bridge sentence should not discard an otherwise grounded answer.
+            if any(token in lowered for token in ("the indexed", "the document", "the handbook", "the archive")):
+                continue
+            return False
         return checked_claims > 0
 
     @staticmethod
@@ -1221,46 +1309,54 @@ class RAGEngine:
     ) -> List[Dict]:
         """Build a grounded chat prompt from retrieved document chunks."""
         context_parts = []
-        for index, doc in enumerate(context_docs[:6], 1):
+        for index, doc in enumerate(context_docs[:8], 1):
             metadata = doc.get("metadata") or {}
             section_title = metadata.get("section_title") or ""
             source_header = f"[Source {index}: {doc['document_title']}"
             if section_title:
                 source_header += f" | Section: {section_title}"
             source_header += f" | Chunk: {doc.get('chunk_index', 0)}]"
-            context_parts.append(f"{source_header}\n{doc['content']}")
+            content = self._clean_context_for_prompt(doc.get("content") or "", limit=2200)
+            context_parts.append(f"{source_header}\n{content}")
 
         context = "\n\n".join(context_parts)
 
-        system_prompt = """You are an academic assistant for K.R. Mangalam University.
+        system_prompt = """You are Scholar Pulse, a polished ChatGPT-like assistant dedicated to K.R. Mangalam University.
 
-Rules:
-- Use ONLY the provided knowledge-base context and recent conversation history
-- Do not guess, invent, or fill gaps from general knowledge
-- If the context is missing a fact, say that clearly and ask a narrower follow-up
-- Keep answers concise, accurate, student-friendly, and easy to scan
-- Write like a polished production assistant, not like a report template
-- Use compact bullets for lists, steps, requirements, facilities, events, placements, fees, or handbook highlights
-- Keep each bullet focused on one idea; do not merge unrelated facts into a long paragraph
-- Do not use headings such as "Direct answer", "Key points", "Highlights", "Why it matters", or "Source"
-- Keep citations out of the main answer body because the UI will render sources separately at the end
-- For greetings or small talk, respond warmly, explain what topics you can help with, and suggest 2 or 3 concrete next questions
+North star:
+- Be useful, calm, clear, and conversational
+- Answer only about KRMU, its schools/programmes, campus, policies, documents, events, and uploaded knowledge-base material
+- Use ONLY the provided knowledge-base context and recent conversation history for factual claims
+- Never invent names, dates, numbers, approvals, fees, contacts, rankings, placements, scholarships, policies, venues, or speakers
+- If the answer is absent from context, say exactly what is missing and suggest a precise next question or document to upload
 
-Answer quality checklist:
-- Start with the answer itself
-- Include only the most relevant details
-- Avoid repeating the whole question
-- If multiple sources agree, synthesize them instead of listing raw snippets
-- Do not mention numbers, dates, fees, rankings, approvals, contacts, or counts unless they appear in the context
-- If a fact is only partially supported, say that it is based on the indexed documents rather than presenting it as certain"""
+Response style:
+- Start directly with the answer; do not say "Here is what I found" unless the question is very broad
+- For a simple fact, answer in 1-3 clean sentences
+- For a broad question, give a short overview, then grouped bullets with plain-language labels
+- For tables, convert rows into sentences; never paste raw table pipes, column dumps, or metadata
+- For procedures, give ordered steps
+- For comparisons, use concise bullets for each option
+- For lists, put every item on its own line
+- Do not use the headings "Direct answer", "Key points", "Highlights", "Why it matters", "Source", "Additional source", or "Source trail"
+- Do not put citations in the answer text; the UI renders sources separately
+- Do not reveal DATASET_TAG, SECTION=, ENTITY=, PROGRAMME=, internal chunk names, retrieval anchors, or training-data notes
+
+Quality checklist before answering:
+- Decide the user's intent: fact lookup, overview, programme/handbook, admissions, fees, hostel, placement, event, policy, table lookup, or follow-up
+- Use the most specific context first; synthesize across sources only when they discuss the same thing
+- Preserve exact numbers/dates/eligibility/course codes/fees only when shown in context
+- Remove duplicated navigation text, footers, repeated school names, quick links, and broken extraction fragments
+- If context is messy, answer the trustworthy parts and state the part that is not clear in the indexed document"""
 
         if self._expand_query_for_retrieval(query) != query:
             system_prompt += """
 
-Programme / handbook answer style:
-- Prefer synopsis, eligibility, duration, credits, curriculum/semester structure, learning outcomes, assessment, labs/projects, internships/placements, and career paths when those items appear in context
-- If the user asks generally about a programme, give a 1-2 line overview followed by short bullets grouped by the available handbook facts
-- Never paste the table of contents or long raw syllabus text; summarize the meaning"""
+Programme / handbook style:
+- Prefer synopsis, eligibility, duration, credits, programme/course codes, curriculum/semester structure, learning outcomes, assessment, labs/projects, internships/placements, and career paths when present
+- If the user asks generally about a programme, write a 1-2 line overview followed by bullets grouped by available handbook facts
+- For syllabus questions, summarize semester/course structure first; include course codes only if the user asks or they are essential
+- Never paste a table of contents or long raw syllabus text"""
 
         history_parts = []
         for turn in (conversation_history or [])[-6:]:
@@ -1279,7 +1375,7 @@ Context from SET Knowledge Base:
 
 Question: {query}
 
-Write the best grounded answer you can using only the context above. Keep it factual, well-structured, and easy to read. If the context is insufficient, say so clearly instead of guessing."""
+Write the best possible KRMU-only answer using the context above. Sound like a production chatbot: clear, organized, complete enough for the question, and free of raw extraction artifacts. If the context is insufficient, say what is missing instead of guessing."""
 
         return [
             {"role": "system", "content": system_prompt},
@@ -1455,6 +1551,44 @@ Summarize the most reliable answer supported by the snippets above."""
             lines.extend(part.strip() for part in line.splitlines() if part.strip())
 
         return "\n".join(lines)
+
+    @classmethod
+    def _clean_context_for_prompt(cls, text: str, limit: int = 2200) -> str:
+        """Remove obvious page chrome/metadata before sending retrieved chunks to the LLM."""
+        cleaned_lines = []
+        seen = set()
+        noise_patterns = (
+            r"^quick links?\b",
+            r"^about krmu\b",
+            r"^browse programmes\b",
+            r"^mandatory disclosures\b",
+            r"^feedback\b",
+            r"^copyright\b",
+            r"^all rights reserved\b",
+            r"^follow us\b",
+            r"^menu\b",
+            r"^search\b",
+            r"^home\s*/",
+        )
+
+        for raw_line in str(text or "").splitlines():
+            line = cls._sanitize_generated_answer(raw_line)
+            line = re.sub(r"\s+", " ", line).strip()
+            if not line:
+                continue
+            lowered = line.lower()
+            if any(re.search(pattern, lowered) for pattern in noise_patterns):
+                continue
+            signature = re.sub(r"[^a-z0-9]+", " ", lowered).strip()
+            if signature in seen:
+                continue
+            seen.add(signature)
+            cleaned_lines.append(line)
+
+        cleaned = "\n".join(cleaned_lines).strip()
+        if len(cleaned) > limit:
+            cleaned = cleaned[:limit].rsplit(" ", 1)[0] + "..."
+        return cleaned
 
     @classmethod
     def _clean_fallback_points(cls, context_docs: List[Dict], max_points: int = 7) -> List[str]:
@@ -2041,7 +2175,7 @@ Summarize the most reliable answer supported by the snippets above."""
     def chat(
         self,
         query: str,
-        top_k: int = 6,
+        top_k: int = 8,
         conversation_history: Optional[List[Dict]] = None,
         chat_provider: str = "auto",
     ) -> Dict:

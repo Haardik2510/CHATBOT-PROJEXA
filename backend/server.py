@@ -433,7 +433,7 @@ def _has_good_sources(source_payload: list) -> bool:
     """Check whether retrieved sources are strong enough to skip web fallback."""
     source_scores = [source.get("relevance_score", 0) for source in source_payload]
     best_source_score = max(source_scores, default=0)
-    return bool(source_payload) and best_source_score >= 0.45
+    return bool(source_payload) and best_source_score >= 0.38
 
 
 def _build_source_citations(source_payload: list) -> List[SourceCitation]:
