@@ -6,6 +6,8 @@ import shutil
 import hashlib
 import json
 import zipfile
+import base64
+import unicodedata
 from typing import List, Dict, Optional, Tuple
 from io import BytesIO
 import httpx
@@ -77,6 +79,8 @@ class DocumentProcessor:
     @staticmethod
     def clean_text(text: str) -> str:
         """Clean and normalize extracted text"""
+        text = unicodedata.normalize("NFKC", text or "")
+        text = text.replace("\u00a0", " ")
         # Remove multiple newlines and spaces
         text = re.sub(r'\n+', '\n', text)
         text = re.sub(r' +', ' ', text)
@@ -309,6 +313,223 @@ class DocumentProcessor:
         return images
 
     @classmethod
+    def _build_ocr_engines(cls):
+        """Initialize OCR engines once so page/image OCR can share the same path."""
+        tesseract_cmd = cls._resolve_tesseract_command()
+        pytesseract = None
+        rapid_ocr = None
+        ocr_engine = None
+
+        if tesseract_cmd:
+            try:
+                import pytesseract as pytesseract_module
+
+                pytesseract_module.pytesseract.tesseract_cmd = tesseract_cmd
+                pytesseract = pytesseract_module
+                ocr_engine = "tesseract"
+            except Exception as exc:
+                logger.warning("Tesseract OCR unavailable, falling back to RapidOCR: %s", exc)
+
+        if not pytesseract:
+            try:
+                from rapidocr_onnxruntime import RapidOCR
+
+                rapid_ocr = RapidOCR()
+                ocr_engine = "rapidocr"
+            except Exception as exc:
+                logger.warning("RapidOCR unavailable: %s", exc)
+
+        return pytesseract, rapid_ocr, ocr_engine
+
+    @classmethod
+    def _ocr_pil_image(cls, image, pytesseract=None, rapid_ocr=None) -> str:
+        """OCR a PIL image using whichever OCR engine is available."""
+        if image is None:
+            return ""
+
+        page_text = ""
+        if pytesseract:
+            page_text = pytesseract.image_to_string(image, config="--psm 6")
+        elif rapid_ocr:
+            import numpy as np
+
+            ocr_result, _ = rapid_ocr(np.array(image))
+            page_text = "\n".join(item[1] for item in ocr_result) if ocr_result else ""
+
+        return cls.clean_ocr_text(page_text)
+
+    @classmethod
+    def _extract_pdf_page_layout_text(cls, page) -> str:
+        """Preserve page text in reading order using PyMuPDF's layout-aware dict output."""
+        text_dict = page.get_text("dict")
+        block_texts = []
+
+        for block in sorted(text_dict.get("blocks", []), key=lambda item: (item.get("bbox", [0, 0])[1], item.get("bbox", [0, 0])[0])):
+            if block.get("type") != 0:
+                continue
+
+            line_texts = []
+            for line in block.get("lines", []):
+                spans = [span.get("text", "") for span in line.get("spans", []) if span.get("text", "").strip()]
+                joined = cls.clean_text("".join(spans))
+                if joined:
+                    line_texts.append(joined)
+
+            if line_texts:
+                block_texts.append("\n".join(line_texts))
+
+        return cls.clean_text("\n\n".join(block_texts))
+
+    @classmethod
+    def _extract_pdf_page_table_lines(cls, page, page_number: int) -> List[str]:
+        """Extract table rows from one PDF page as retrieval-friendly facts."""
+        if not hasattr(page, "find_tables"):
+            return []
+
+        lines = []
+        try:
+            table_finder = page.find_tables()
+        except Exception as exc:
+            logger.debug("PyMuPDF table detection failed on page %s: %s", page_number, exc)
+            return []
+
+        for table_index, table in enumerate(getattr(table_finder, "tables", []) or [], start=1):
+            try:
+                rows = table.extract()
+            except Exception as exc:
+                logger.debug("PyMuPDF table extraction failed on page %s: %s", page_number, exc)
+                continue
+
+            lines.extend(
+                cls._format_table_matrix(rows, table_label=f"PDF table {table_index} on page {page_number}")
+            )
+
+        return lines
+
+    @classmethod
+    def _describe_image_with_gemini(cls, image_bytes: bytes, page_number: int) -> str:
+        """Describe a PDF image with Gemini when configured so image semantics enter the index."""
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if not api_key or not image_bytes:
+            return ""
+
+        model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash").strip() or "gemini-1.5-flash"
+        mime_type = "image/png"
+        if image_bytes.startswith(b"\xff\xd8"):
+            mime_type = "image/jpeg"
+        elif image_bytes.startswith(b"RIFF") and b"WEBP" in image_bytes[:16]:
+            mime_type = "image/webp"
+
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": (
+                                "Describe this document image for retrieval. Focus only on visible factual content "
+                                "such as captions, charts, posters, labels, tables, campus names, programme names, "
+                                "or other academic details. Keep it under 80 words and do not invent missing details."
+                            )
+                        },
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": base64.b64encode(image_bytes).decode("ascii"),
+                            }
+                        },
+                    ]
+                }
+            ],
+            "generationConfig": {"temperature": 0.1, "topP": 0.8, "maxOutputTokens": 160},
+        }
+
+        try:
+            response = httpx.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                params={"key": api_key},
+                json=payload,
+                timeout=40.0,
+            )
+            response.raise_for_status()
+            data = response.json()
+            parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+            text = " ".join(part.get("text", "").strip() for part in parts if part.get("text"))
+            text = cls.clean_text(text)
+            if not text:
+                return ""
+            return f"Image description on page {page_number}: {text}"
+        except Exception as exc:
+            logger.debug("Gemini image description skipped on page %s: %s", page_number, exc)
+            return ""
+
+    @classmethod
+    def _extract_pdf_page_image_details(
+        cls,
+        pdf,
+        page,
+        page_number: int,
+        *,
+        pytesseract=None,
+        rapid_ocr=None,
+    ) -> Tuple[List[Dict], List[str]]:
+        """Extract useful PDF images and convert their visible meaning into searchable text."""
+        details = []
+        extracted_images = []
+
+        try:
+            from PIL import Image, ImageFilter, ImageOps
+        except ImportError:
+            Image = ImageFilter = ImageOps = None
+
+        seen_hashes = set()
+        for image_number, image_info in enumerate(page.get_images(full=True), start=1):
+            try:
+                image_data = pdf.extract_image(image_info[0])
+                raw_bytes = image_data.get("image")
+                if not raw_bytes:
+                    continue
+
+                digest = hashlib.sha1(raw_bytes).hexdigest()
+                if digest in seen_hashes:
+                    continue
+                seen_hashes.add(digest)
+
+                prepared = cls._prepare_image_asset(
+                    raw_bytes,
+                    filename=f"page-{page_number}-image-{image_number}.{image_data.get('ext', 'png')}",
+                    alt=f"Document image from page {page_number}",
+                )
+                if prepared:
+                    extracted_images.append(prepared)
+
+                image_notes = []
+                if Image and ImageOps:
+                    try:
+                        pil_image = Image.open(BytesIO(raw_bytes))
+                        pil_image = ImageOps.grayscale(pil_image)
+                        pil_image = ImageOps.autocontrast(pil_image)
+                        if ImageFilter:
+                            pil_image = pil_image.filter(ImageFilter.SHARPEN)
+                        image_ocr_text = cls._ocr_pil_image(pil_image, pytesseract=pytesseract, rapid_ocr=rapid_ocr)
+                        if image_ocr_text and len(image_ocr_text) >= 12:
+                            image_notes.append(f"Image text on page {page_number}: {image_ocr_text}")
+                    except Exception as exc:
+                        logger.debug("Image OCR skipped on page %s image %s: %s", page_number, image_number, exc)
+
+                gemini_description = cls._describe_image_with_gemini(raw_bytes, page_number)
+                if gemini_description:
+                    image_notes.append(gemini_description)
+
+                if image_notes:
+                    details.extend(image_notes)
+                    if prepared:
+                        prepared["alt"] = image_notes[0][:160]
+            except Exception as exc:
+                logger.debug("Skipping PDF image detail extraction on page %s: %s", page_number, exc)
+
+        return extracted_images, details
+
+    @classmethod
     def _extract_pdf_images(cls, file_content: bytes, max_images: int = 4) -> List[Dict]:
         """Extract a few meaningful images from a PDF."""
         try:
@@ -538,65 +759,119 @@ class DocumentProcessor:
     def process_pdf(cls, file_content: bytes) -> Dict:
         """Extract text from PDF file"""
         try:
-            try:
-                from pypdf import PdfReader
-            except ImportError:
-                from PyPDF2 import PdfReader
-            
-            reader = PdfReader(BytesIO(file_content))
-            text_parts = []
-            page_texts = []
-            
-            for page in reader.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    cleaned_page = cls.clean_text(page_text)
-                    page_texts.append(cleaned_page)
-                    if cleaned_page:
-                        text_parts.append(cleaned_page)
-                else:
-                    page_texts.append("")
-            
-            extracted_text = cls.clean_text("\n".join(text_parts))
-            table_text = cls._extract_pdf_tables_text(file_content)
-            if table_text:
-                extracted_text = cls.clean_text(f"{extracted_text}\n\nExtracted PDF tables\n{table_text}")
-            used_ocr = False
-            ocr_engine = None
+            import fitz
+            from PIL import Image, ImageFilter, ImageOps
 
-            if not extracted_text.strip() or cls._should_force_ocr(extracted_text, len(reader.pages)):
-                ocr_result = cls.ocr_pdf(file_content, extracted_pages=page_texts)
-                if not ocr_result["success"]:
-                    if not extracted_text.strip():
-                        return ocr_result
+            pdf = fitz.open(stream=file_content, filetype="pdf")
+            try:
+                page_count = pdf.page_count
+                pytesseract, rapid_ocr, detected_ocr_engine = cls._build_ocr_engines()
+                page_sections = []
+                page_texts = []
+                all_images = []
+                used_ocr = False
+                ocr_engine = None
+
+                render_scale = cls._ocr_render_scale(page_count, len(file_content))
+
+                for page_index in range(page_count):
+                    page_number = page_index + 1
+                    page = pdf.load_page(page_index)
+
+                    layout_text = cls._extract_pdf_page_layout_text(page)
+                    table_lines = cls._extract_pdf_page_table_lines(page, page_number)
+                    extracted_page_text = cls.clean_text(
+                        "\n".join(
+                            part for part in [layout_text, "\n".join(table_lines)] if part
+                        )
+                    )
+
+                    extracted_metrics = cls._text_quality_metrics(extracted_page_text)
+                    needs_ocr = (
+                        not extracted_page_text
+                        or extracted_metrics["word_count"] < 14
+                        or extracted_metrics["quality_score"] < 0.24
+                    )
+
+                    ocr_page_text = ""
+                    if needs_ocr and (pytesseract or rapid_ocr):
+                        try:
+                            pix = page.get_pixmap(matrix=fitz.Matrix(render_scale, render_scale), alpha=False)
+                            image = Image.open(BytesIO(pix.tobytes("png")))
+                            image = ImageOps.grayscale(image)
+                            image = ImageOps.autocontrast(image)
+                            image = image.filter(ImageFilter.SHARPEN)
+                            ocr_page_text = cls._ocr_pil_image(
+                                image,
+                                pytesseract=pytesseract,
+                                rapid_ocr=rapid_ocr,
+                            )
+                            if ocr_page_text:
+                                used_ocr = True
+                                ocr_engine = detected_ocr_engine
+                        except Exception as exc:
+                            logger.debug("Page OCR skipped on page %s: %s", page_number, exc)
+
+                    merged_page_text, _ = cls._merge_text_versions(extracted_page_text, ocr_page_text)
+                    page_texts.append(merged_page_text)
+
+                    page_images, image_details = cls._extract_pdf_page_image_details(
+                        pdf,
+                        page,
+                        page_number,
+                        pytesseract=pytesseract,
+                        rapid_ocr=rapid_ocr,
+                    )
+                    if page_images:
+                        all_images.extend(page_images)
+
+                    page_parts = [f"Page {page_number}"]
+                    if merged_page_text:
+                        page_parts.append(merged_page_text)
+                    if image_details:
+                        page_parts.append("\n".join(image_details))
+
+                    page_section_text = cls.clean_text("\n\n".join(part for part in page_parts if part))
+                    if page_section_text:
+                        page_sections.append(page_section_text)
+
+                extracted_text = cls.clean_text("\n\n".join(page_sections))
+
+                if not extracted_text.strip() or cls._should_force_ocr(extracted_text, page_count):
+                    ocr_result = cls.ocr_pdf(file_content, extracted_pages=page_texts)
+                    if not ocr_result["success"]:
+                        if not extracted_text.strip():
+                            return ocr_result
+                        full_text = extracted_text
+                        quality_metrics = cls._text_quality_metrics(full_text)
+                    else:
+                        merged_text, quality_metrics = cls._merge_text_versions(
+                            extracted_text,
+                            cls.clean_ocr_text(ocr_result["text"]),
+                        )
+                        full_text = cls.clean_text(merged_text)
+                        used_ocr = True
+                        ocr_engine = ocr_result.get("ocr_engine") or ocr_engine
+                else:
                     full_text = extracted_text
                     quality_metrics = cls._text_quality_metrics(full_text)
-                else:
-                    merged_text, quality_metrics = cls._merge_text_versions(
-                        extracted_text,
-                        cls.clean_ocr_text(ocr_result["text"]),
-                    )
-                    full_text = cls.clean_text(merged_text)
-                    used_ocr = True
-                    ocr_engine = ocr_result.get("ocr_engine")
-            else:
-                full_text = extracted_text
-                quality_metrics = cls._text_quality_metrics(full_text)
 
-            chunk_size, overlap = cls._chunk_settings(
-                file_size_bytes=len(file_content),
-                page_count=len(reader.pages),
-                used_ocr=used_ocr,
-                text_length=len(full_text),
-            )
-            chunks = cls.chunk_text(full_text, chunk_size=chunk_size, overlap=overlap)
+                chunk_size, overlap = cls._chunk_settings(
+                    file_size_bytes=len(file_content),
+                    page_count=page_count,
+                    used_ocr=used_ocr,
+                    text_length=len(full_text),
+                )
+                chunks = cls.chunk_text(full_text, chunk_size=chunk_size, overlap=overlap)
+            finally:
+                pdf.close()
             
             return {
                 "success": True,
                 "text": full_text,
                 "chunks": chunks,
-                "images": cls._extract_pdf_images(file_content),
-                "page_count": len(reader.pages),
+                "images": all_images[:12],
+                "page_count": page_count,
                 "used_ocr": used_ocr,
                 "ocr_engine": ocr_engine,
                 "ocr_quality_score": quality_metrics.get("quality_score", 0.0),

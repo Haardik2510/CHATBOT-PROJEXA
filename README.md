@@ -426,6 +426,7 @@ It reports key status like:
 - chat answers can be switched between Auto, Groq, Gemini, and OpenAI from the chat toolbar
 - raw dataset tags/internal metadata are stripped from generated chat answers
 - PDF, DOCX, and PPTX table rows are preserved as labeled facts during indexing
+- PDF ingestion now preserves page text, table rows, OCR recovery, image text, and Gemini image descriptions when available
 - official KRMU happenings/news scraping added for event summaries and images
 - optional Gemini enrichment added for event/news responses
 - chunk preview and retrieval inspection tools added for admins
