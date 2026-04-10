@@ -423,6 +423,7 @@ It reports key status like:
 - database retrieval improved with lexical fallback and better grounding logic
 - multi-turn retrieval rewrites follow-up questions with the active conversation topic
 - database answers formatted more cleanly and conservatively
+- programme and handbook answers are auto-shaped into sections such as Overview, Eligibility, Curriculum, Fees, and Placements when context supports it
 - chat answers can be switched between Auto, Groq, Gemini, and OpenAI from the chat toolbar
 - raw dataset tags/internal metadata are stripped from generated chat answers
 - PDF, DOCX, and PPTX table rows are preserved as labeled facts during indexing

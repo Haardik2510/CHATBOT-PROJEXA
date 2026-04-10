@@ -1437,6 +1437,7 @@ Quality checklist before answering:
 Programme / handbook style:
 - Prefer synopsis, eligibility, duration, credits, programme/course codes, curriculum/semester structure, learning outcomes, assessment, labs/projects, internships/placements, and career paths when present
 - If the user asks generally about a programme, write a 1-2 line overview followed by bullets grouped by available handbook facts
+- When enough context exists, prefer these section labels in this spirit: Overview, Eligibility, Duration & Structure, Curriculum, Assessment, Fees & Scholarships, Placements & Careers, Facilities & Support
 - For syllabus questions, summarize semester/course structure first; include course codes only if the user asks or they are essential
 - Never paste a table of contents or long raw syllabus text"""
 
@@ -1719,6 +1720,149 @@ Summarize the most reliable answer supported by the snippets above."""
 
         return points
 
+    @staticmethod
+    def _is_programme_handbook_query(query: str) -> bool:
+        lowered = (query or "").strip().lower()
+        markers = (
+            "program", "programme", "course", "handbook", "curriculum", "syllabus",
+            "b.tech", "btech", "m.tech", "mtech", "bca", "mca", "bba", "mba",
+            "semester", "credits", "eligibility", "admission", "fees", "placements",
+        )
+        return any(marker in lowered for marker in markers)
+
+    @staticmethod
+    def _handbook_section_specs() -> List[tuple]:
+        return [
+            ("Overview", ("overview", "synopsis", "introduction", "about", "programme overview", "program overview")),
+            ("Eligibility", ("eligibility", "admission criteria", "minimum requirement", "entry requirement", "who can apply")),
+            ("Duration & Structure", ("duration", "semester", "year", "years", "credits", "programme structure", "program structure")),
+            ("Curriculum", ("curriculum", "syllabus", "subject", "subjects", "course", "courses", "lab", "laboratory", "project", "semester wise")),
+            ("Assessment", ("assessment", "evaluation", "exam", "examination", "grading", "attendance", "internal", "end term")),
+            ("Fees & Scholarships", ("fee", "fees", "tuition", "scholarship", "scholarships", "financial aid", "refund")),
+            ("Placements & Careers", ("placement", "placements", "internship", "internships", "career", "careers", "recruiter", "recruiters", "package")),
+            ("Facilities & Support", ("lab", "labs", "library", "support", "mentoring", "hostel", "infrastructure", "facilities")),
+        ]
+
+    @classmethod
+    def _handbook_focus_order(cls, query: str) -> List[str]:
+        lowered = (query or "").strip().lower()
+        if any(token in lowered for token in ("fee", "fees", "scholarship", "financial aid", "refund")):
+            return ["Fees & Scholarships", "Eligibility", "Duration & Structure", "Overview"]
+        if any(token in lowered for token in ("eligibility", "admission", "apply", "criteria")):
+            return ["Eligibility", "Duration & Structure", "Fees & Scholarships", "Overview"]
+        if any(token in lowered for token in ("curriculum", "syllabus", "subject", "semester", "credits")):
+            return ["Curriculum", "Duration & Structure", "Assessment", "Overview"]
+        if any(token in lowered for token in ("placement", "placements", "career", "internship", "package")):
+            return ["Placements & Careers", "Curriculum", "Overview"]
+        if any(token in lowered for token in ("lab", "labs", "library", "hostel", "facilities", "infrastructure")):
+            return ["Facilities & Support", "Curriculum", "Overview"]
+        return [name for name, _ in cls._handbook_section_specs()]
+
+    @classmethod
+    def _collect_handbook_sections(cls, query: str, context_docs: List[Dict], max_points_per_section: int = 3) -> Dict[str, List[str]]:
+        """Map retrieved handbook content into stable answer sections."""
+        section_specs = cls._handbook_section_specs()
+        section_map = {name: [] for name, _ in section_specs}
+        section_seen = {name: set() for name, _ in section_specs}
+
+        for doc in context_docs[:5]:
+            metadata = doc.get("metadata") or {}
+            section_hint = str(metadata.get("section_title") or "").lower()
+            text = cls._clean_context_for_prompt(doc.get("content") or "", limit=1800)
+            if not text:
+                continue
+
+            candidates = []
+            for part in text.splitlines():
+                part = part.strip(" -\t")
+                if not part:
+                    continue
+                pieces = re.split(r"(?<=[.;])\s+|\s+\|\s+", part)
+                candidates.extend(piece.strip() for piece in pieces if piece.strip())
+
+            for candidate in candidates:
+                cleaned = cls._sanitize_generated_answer(candidate).strip(" -\t")
+                if len(cleaned) < 28:
+                    continue
+                lowered = cleaned.lower()
+                if lowered.startswith(("page ", "table row ", "image description on page", "image text on page")):
+                    continue
+
+                target_section = None
+                for section_name, keywords in section_specs:
+                    if any(keyword in lowered for keyword in keywords):
+                        target_section = section_name
+                        break
+
+                if target_section is None:
+                    for section_name, keywords in section_specs:
+                        if any(keyword in section_hint for keyword in keywords):
+                            target_section = section_name
+                            break
+
+                if target_section is None and not section_map["Overview"]:
+                    target_section = "Overview"
+                if target_section is None:
+                    continue
+
+                signature = re.sub(r"[^a-z0-9]+", " ", lowered).strip()[:140]
+                if not signature or signature in section_seen[target_section]:
+                    continue
+
+                if len(section_map[target_section]) >= max_points_per_section:
+                    continue
+
+                section_seen[target_section].add(signature)
+                section_map[target_section].append(cleaned.rstrip(".") + ".")
+
+        focus_order = cls._handbook_focus_order(query)
+        ordered = {}
+        for section_name in focus_order:
+            if section_map.get(section_name):
+                ordered[section_name] = section_map[section_name]
+
+        for section_name, _ in section_specs:
+            if section_name not in ordered and section_map.get(section_name):
+                ordered[section_name] = section_map[section_name]
+
+        return ordered
+
+    @classmethod
+    def _format_handbook_answer(cls, query: str, answer: str, context_docs: List[Dict]) -> str:
+        """Shape programme/handbook answers into stable production-style sections."""
+        if not cls._is_programme_handbook_query(query):
+            return answer
+
+        sections = cls._collect_handbook_sections(query, context_docs)
+        if not sections:
+            return answer
+
+        normalized_answer = cls._sanitize_generated_answer(answer)
+        intro_sentences = [
+            sentence.strip()
+            for sentence in re.split(r"(?<=[.!?])\s+", normalized_answer)
+            if sentence.strip()
+        ]
+        intro = " ".join(intro_sentences[:2]).strip()
+        if intro.lower().startswith(("here is what i found", "continuing from your earlier question")):
+            intro = ""
+        if intro and len(intro) > 280:
+            intro = intro[:280].rsplit(" ", 1)[0] + "..."
+
+        lines = []
+        if intro:
+            lines.append(intro)
+
+        for section_name, points in sections.items():
+            if not points:
+                continue
+            if lines:
+                lines.append("")
+            lines.append(f"**{section_name}**")
+            lines.extend(f"- {point}" for point in points)
+
+        return "\n".join(lines).strip() or answer
+
     def _compose_grounded_fallback(
         self,
         query: str,
@@ -1757,6 +1901,11 @@ Summarize the most reliable answer supported by the snippets above."""
         points = self._clean_fallback_points(top_docs)
 
         response_parts = [lead]
+
+        if self._is_programme_handbook_query(query):
+            structured = self._format_handbook_answer(query, lead, top_docs)
+            if structured and structured != lead:
+                return structured
 
         if points:
             response_parts.append("")
@@ -2241,6 +2390,7 @@ Summarize the most reliable answer supported by the snippets above."""
                 preferred_provider=chat_provider,
             )
             response = self._sanitize_generated_answer(response)
+            response = self._format_handbook_answer(query, response, context_docs)
             if not self._looks_like_greeting(query) and not self._verify_answer(response, context_docs):
                 logger.warning("Generated answer failed grounding verification for query: %s", query)
                 return self._compose_grounded_fallback(query, context_docs, conversation_history=conversation_history)
